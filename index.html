@@ -2617,7 +2617,7 @@
             add(0, wide, 'WR2', p => { p.isWR = true; });
             add(1.2, -8.5, 'WR3', p => { p.isWR = true; });
             add(0, 9, 'TE', p => { p.isTE = true; });                                               // TE on the right edge of the line
-            add(5, play === 'SWEEP_LEFT' ? -3 : 3, 'RB', p => { p.isRB = true; });                  // RB lines up next to the QB, on the side he's running to
+            add(4.6, play === 'SWEEP_LEFT' ? -2.4 : 2.4, 'RB', p => { p.isRB = true; });                  // RB lines up next to the QB, on the side he's running to
             return out;
         }
         // 11 on defense: 5 DL, 3 CB, 2 MLB, 1 S. `hero` = the human's body (he plays one of the MLBs).
@@ -2654,10 +2654,10 @@
             hs.t++; const dir = offenseDirection, qb = hs.qb, rb = hs.rb;
             qb.animTimer = 0; qb.facing = dir;
             const tx = qb.x + dir * 0.5, ty = qb.y + (rb.y >= qb.y ? 0.4 : -0.4), dx = tx - rb.x, dy = ty - rb.y, dist = Math.hypot(dx, dy) || 1;
-            const step = Math.min(dist, rb.speed * 1.05 * worldDirSpeedMul(dx, dy)); rb.x += (dx / dist) * step; rb.y += (dy / dist) * step; rb.facing = dir; rb.animTimer += 0.3;
-            if ((hs.t >= 12 && visDist(rb, qb) < 1.5) || hs.t > 45) {
+            const step = Math.min(dist, rb.speed * 1.15 * worldDirSpeedMul(dx, dy)); rb.x += (dx / dist) * step; rb.y += (dy / dist) * step; rb.facing = dir; rb.animTimer += 0.3;
+            if ((hs.t >= 10 && visDist(rb, qb) < 1.35) || hs.t > 30) {
                 qb.hasBall = false; rb.hasBall = true; qb.handedOff = true; rb.facing = dir; rb.isBlocking = false; rb.blockTarget = null;
-                if (qb === player) player = rb;                 // you now control the running back
+                if (qb === player) { player = rb; try { if (window.StatsBridge && StatsBridge.active() && StatsBridge.speedFor) rb.speed = StatsBridge.speedFor(rb); } catch (e) {} }   // you now control the running back (with the same speed the player always gets)
                 if (p2Player === qb) p2Player = rb;
                 camera.target = rb; spawnDust(rb.x, rb.y); handoffState = null;
             }
@@ -4883,6 +4883,18 @@ const PXS = (function () {
                 ctx.drawImage(spriteCanvas, Math.round(-PXS.HX * spx), spriteTop, Math.round(PXS.W * spx), Math.round(PXS.H * spx));
                 ctx.restore();
             });
+            // ---- clarity markers, drawn on top of every sprite: YELLOW arrow = ball carrier, BLUE arrow = YOU ----
+            if (!isIntroScene && ['PRE_SNAP', 'PLAYING', 'BALL_IN_AIR', 'BALL_LOOSE'].includes(gameState)) {
+                const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22), _bob = Math.sin(Date.now() / 140) * _spx * 1.4;
+                const _me = (!isMultiplayer || isMpHost) ? player : (isMpClient ? p2Player : null), _bc = players.find(q => q.hasBall);
+                const _arrow = (q, fill) => {
+                    const sc = toScreen(q.x, q.y), w = Math.max(3, _spx * 3.0), hg = w * 1.15, tipY = -19.5 * _spx + _bob;
+                    ctx.save(); ctx.translate(Math.round(sc.x), Math.round(sc.y)); ctx.fillStyle = fill; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1.5, _spx * 0.8); ctx.lineJoin = 'round';
+                    ctx.beginPath(); ctx.moveTo(-w, tipY - hg); ctx.lineTo(w, tipY - hg); ctx.lineTo(0, tipY); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
+                };
+                if (_bc && gameState === 'PLAYING') _arrow(_bc, '#facc15');
+                if (_me && _me !== _bc && players.includes(_me)) _arrow(_me, '#38bdf8');
+            }
             drawSideline(1);
             drawGrounds(0, NEAR_T);
             drawStands(1);
