@@ -518,7 +518,30 @@
         .pk-playbig { display: flex; flex-direction: column; align-items: center; gap: 14px; animation: pkPop 0.3s steps(3) both; }
         .pk-playbig .pk-pname { color: #fff; font-size: clamp(12px, 4vw, 16px); text-shadow: 3px 3px 0 #000; text-align: center; }
         .pk-playbig .playbook-svg { width: min(240px, 66vw); height: min(240px, 66vw); border-width: 4px; box-shadow: 6px 6px 0 rgba(0,0,0,.8); }
-    </style>
+    
+        /* In-game sprite size controls: cosmetic-only scaling, separate from collision/gameplay sizes. */
+        #sprite-size-panel {
+            display: none; position: fixed; left: max(14px, env(safe-area-inset-left));
+            top: max(14px, env(safe-area-inset-top)); z-index: 1800;
+            width: min(270px, calc(100vw - 28px)); padding: 11px 12px 10px;
+            box-sizing: border-box; background: rgba(10, 15, 25, .94);
+            border: 3px solid #facc15; box-shadow: 5px 5px 0 rgba(0,0,0,.72);
+            color: #fff; font-family: 'Press Start 2P', monospace; pointer-events: auto;
+        }
+        #sprite-size-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+        #sprite-size-title { color:#facc15; font-size:8px; line-height:1.6; }
+        .size-control { margin-top:9px; }
+        .size-control-head { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#cbd5e1; font-size:7px; line-height:1.6; }
+        .size-control-value { color:#4ade80; font-size:8px; white-space:nowrap; text-shadow:2px 2px 0 #000; }
+        .size-range { display:block; width:100%; margin:5px 0 0; accent-color:#facc15; cursor:pointer; touch-action:pan-y; }
+        #sprite-size-foot { display:flex; justify-content:space-between; gap:8px; margin-top:8px; color:#94a3b8; font-size:6px; line-height:1.5; }
+        @media (max-width: 560px) {
+            #sprite-size-panel { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); width: 218px; padding:8px 9px; }
+            #sprite-size-title { font-size:7px; }
+            .size-control-head { font-size:6px; } .size-control-value { font-size:7px; }
+            .size-control { margin-top:7px; }
+        }
+</style>
 </head>
 <body>
     <div id="ui-container" class="ui-layer"></div>
@@ -699,6 +722,26 @@
     </div>
     
     <canvas id="gameCanvas"></canvas>
+
+    <div id="sprite-size-panel" aria-label="Player, ball, and referee size controls">
+        <div id="sprite-size-head">
+            <div id="sprite-size-title">SPRITE SIZE</div>
+            <div style="color:#94a3b8;font-size:7px;">LIVE ADJUST</div>
+        </div>
+        <div class="size-control">
+            <div class="size-control-head"><label for="player-size-range">PLAYERS</label><span class="size-control-value" id="player-size-value">100%</span></div>
+            <input class="size-range" id="player-size-range" type="range" min="70" max="150" step="5" value="100" aria-label="Player sprite size" oninput="setSpriteScale('players', this.value)">
+        </div>
+        <div class="size-control">
+            <div class="size-control-head"><label for="ball-size-range">FOOTBALL</label><span class="size-control-value" id="ball-size-value">100%</span></div>
+            <input class="size-range" id="ball-size-range" type="range" min="70" max="150" step="5" value="100" aria-label="Football sprite size" oninput="setSpriteScale('ball', this.value)">
+        </div>
+        <div class="size-control">
+            <div class="size-control-head"><label for="ref-size-range">REFEREES</label><span class="size-control-value" id="ref-size-value">100%</span></div>
+            <input class="size-range" id="ref-size-range" type="range" min="70" max="150" step="5" value="100" aria-label="Referee sprite size" oninput="setSpriteScale('refs', this.value)">
+        </div>
+        <div id="sprite-size-foot"><span>70% SMALLER</span><span>150% LARGER</span></div>
+    </div>
 
     <script id="ui-click-sfx">
     /* Button click sound: every completed button tap/click (not scrolls or drags), at most once per 0.2s. Works with browser autoplay rules (incl. iOS Safari / home-screen app). */
@@ -1642,7 +1685,8 @@
         const SCREEN_SPEED_BLEND = 0.7;
         // ===== SHARED MOVEMENT + CONTACT HELPERS (used by the player AND the CPU so everyone follows the same rules) =====
         // Fixed reference camera angles so movement speed never depends on the camera mode.
-        const MOVE_PITCH = 1, MOVE_SKEW = 0;
+        const FIELD_VIEW_PITCH = 0.90;
+        const MOVE_PITCH = FIELD_VIEW_PITCH, MOVE_SKEW = 0;
         // Speed multiplier for moving in world direction (dx, dy): makes pace look even on screen. Straight downfield = 1.0.
         function worldDirSpeedMul(dx, dy) {
             const len = Math.hypot(dx, dy); if (len < 1e-6) return 1;
@@ -1793,114 +1837,51 @@
         }
 
         const keys = {}; let spacePressed = false; window.addEventListener('keydown', (e) => { keys[e.code] = true; }); window.addEventListener('keyup', (e) => keys[e.code] = false);
-        const camera = { x: 60, y: 0, zoom: 45, baseZoom: 45, pitch: 1, skew: 0, target: player, currentX: 60, currentY: 0 };
+        const camera = { x: 60, y: 0, zoom: 45, baseZoom: 45, pitch: FIELD_VIEW_PITCH, skew: 0, target: player, currentX: 60, currentY: 0 };
         // Online: when the view is mirrored left<->right the perspective lean (skew) has to flip too, otherwise the field/stadium
         // leans the wrong way and looks inverted. Everything that reads camera.skew (drawing, input, stadium) stays consistent.
         { const s0 = camera.skew; camera._skew = s0; Object.defineProperty(camera, 'skew', { configurable: true, enumerable: true, get() { return window._mpMirror ? -this._skew : this._skew; }, set(v) { this._skew = v; } }); }
 
-        // ===== CAMERA MODES (pause menu > SETTINGS) =====
-        const CAM_MODES = {
-            normal:    { label: 'NORMAL',    desc: 'Classic flat field view',       z: 1,    pitch: 1, skew: 0, lag: 0.2 },
-            wide:      { label: 'WIDE',      desc: 'See more of the field',        z: 0.6,  pitch: 1, skew: 0, lag: 0.2 },
-            far:       { label: 'FAR',       desc: 'Whole field and the track',    z: 0.2,  pitch: 1, skew: 0, lag: 0.2 },
-            close:     { label: 'CLOSE',     desc: 'Closer action, full field width', z: 1.15, pitch: 1, skew: 0, lag: 0.2 },
-            dynamic:   { label: 'DYNAMIC',   desc: 'Zooms in and leads the play',  z: 1,    pitch: 1, skew: 0, lag: 0.14 },
-            cinematic: { label: 'CINEMATIC', desc: 'Flat field, drift, letterbox', z: 1.12, pitch: 1, skew: 0, lag: 0.07 },
-            free:      { label: 'FREE CAM',  desc: 'Pan and zoom it yourself',     z: 1,    pitch: 1, skew: 0, lag: 0.35 }
-        };
+        // ===== FIXED FLAT GAMEPLAY CAMERA =====
+        // Camera controls are gone; lock the user's chosen 133% camera zoom.
+        const CAM_MODES = { normal: { label: 'NORMAL', desc: 'Classic flat field view', z: 1, pitch: FIELD_VIEW_PITCH, skew: 0, lag: 0.2 } };
         let cameraMode = 'normal';
-        try { const sv = localStorage.getItem('fbCamMode'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
-        const camUnit = () => canvas.height * 0.0142;
-        const freeCam = { x: 60, y: 0, zoom: 45, hold: {}, drag: null };
-        const dyn = { mul: 1, lead: 0, spd: 0, px: 60, py: 0 };
-        let cineBars = null, freeUI = null;
+        const CAMERA_ZOOM_FACTOR = 1.33;
+        const camUnit = () => canvas.height * 0.0165 * CAMERA_ZOOM_FACTOR;
+
+        // Cosmetic sprite scaling controls. Simulation positions and collision sizes remain unchanged.
+        let playerSizeScale = 1.0;
+        let ballSizeScale = 1.0;
+        let refSizeScale = 1.0;
+        function setSpriteScale(kind, value) {
+            const pct = Math.max(70, Math.min(150, Math.round(Number(value) || 100)));
+            const scale = pct / 100;
+            if (kind === 'players') playerSizeScale = scale;
+            else if (kind === 'ball') ballSizeScale = scale;
+            else if (kind === 'refs') refSizeScale = scale;
+            const valueEl = document.getElementById(kind === 'players' ? 'player-size-value' : kind === 'ball' ? 'ball-size-value' : 'ref-size-value');
+            const rangeEl = document.getElementById(kind === 'players' ? 'player-size-range' : kind === 'ball' ? 'ball-size-range' : 'ref-size-range');
+            if (valueEl) valueEl.textContent = pct + '%';
+            if (rangeEl && rangeEl.value !== String(pct)) rangeEl.value = String(pct);
+        }
         function applyCameraMode(snap) {
-            const m = CAM_MODES[cameraMode]; camera.pitch = m.pitch; camera.skew = m.skew; camera.baseZoom = camUnit() * m.z;
+            camera.pitch = FIELD_VIEW_PITCH;
+            camera.skew = 0;
+            camera.baseZoom = camUnit();
             if (snap) camera.zoom = camera.baseZoom;
-            dyn.mul = 1; dyn.lead = 0; dyn.spd = 0;
-            if (cineBars) cineBars.style.display = cameraMode === 'cinematic' ? 'block' : 'none';
-            if (freeUI) freeUI.style.display = cameraMode === 'free' ? 'flex' : 'none';
-            if (cameraMode === 'free') { freeCam.x = camera.currentX; freeCam.y = camera.currentY; freeCam.zoom = camera.zoom; }
         }
         function cameraModeUpdate() {
-            if (isMultiplayer && isMpClient) return;
-            const m = CAM_MODES[cameraMode], t = Date.now(), unit = camUnit();
-            if (cameraMode === 'free') {
-                const h = freeCam.hold, step = 0.9 * unit / freeCam.zoom; let mx = 0, my = 0;
-                if (h.left || keys['KeyJ']) mx -= 1; if (h.right || keys['KeyL']) mx += 1; if (h.up || keys['KeyI']) my -= 1; if (h.down || keys['KeyK']) my += 1;
-                freeCam.x += mx * step; freeCam.y += my * step * 1.3;
-                if (h.zin || keys['Equal']) freeCam.zoom *= 1.025; if (h.zout || keys['Minus']) freeCam.zoom /= 1.025;
-                if (keys['KeyR']) recenterFreeCam();
-                freeCam.zoom = Math.max(unit * 0.12, Math.min(unit * 3.5, freeCam.zoom));
-                freeCam.x = Math.max(-40, Math.min(160, freeCam.x)); freeCam.y = Math.max(-60, Math.min(60, freeCam.y));
-                camera.x = freeCam.x; camera.y = freeCam.y; camera.zoom = freeCam.zoom; return;
-            }
-            if (cameraMode === 'dynamic') {
-                const sp = Math.hypot(camera.x - dyn.px, camera.y - dyn.py); dyn.px = camera.x; dyn.py = camera.y; dyn.spd += (sp - dyn.spd) * 0.08;
-                let want = 1 + Math.min(0.3, dyn.spd * 1.1);
-                if (isPassing || gameState === 'BALL_IN_AIR') want = 0.82; else if (gameState === 'PRE_SNAP') want = 0.9;
-                dyn.mul += (want - dyn.mul) * 0.04; camera.baseZoom = unit * dyn.mul;
-                if (camera.target) { const f = camera.target.facing || 0; dyn.lead += (f * 3 - dyn.lead) * 0.04; camera.x += dyn.lead; }
-                camera.pitch = 1; camera.skew = 0;
-            } else if (cameraMode === 'cinematic') {
-                camera.baseZoom = unit * m.z * (1 + 0.05 * Math.sin(t / 4500));
-                if (camera.target) { camera.x += Math.sin(t / 2800) * 1.4; camera.y += Math.cos(t / 3500) * 0.8; }
-                camera.pitch = 1; camera.skew = 0;
-            }
+            // Fixed flat view: no dynamic zoom, angle switching, cinematic bars, or free camera.
+            camera.pitch = FIELD_VIEW_PITCH;
+            camera.skew = 0;
         }
-        function recenterFreeCam() { const tg = camera.target; freeCam.x = (tg && tg.x !== undefined) ? tg.x : 60; freeCam.y = (tg && tg.y !== undefined) ? tg.y : 0; freeCam.zoom = camUnit(); }
         function pauseMenuHTML() {
             return `<div style="text-align: center;"><h2 class="result-headline" style="color: #facc15;">PAUSED</h2>
                 <div style="display:flex; flex-direction:column; gap:12px; margin-top:20px;">
                     <button class="retro-btn" style="background-color: #3b82f6;" onclick="resumeGame()">RESUME</button>
-                    <button class="retro-btn" style="background-color: #8b5cf6;" onclick="showCameraSettings()">SETTINGS</button>
                     <button class="retro-btn" style="background-color: #ef4444;" onclick="exitToHub()">QUIT TO HUB</button>
                 </div></div>`;
         }
-        window.showCameraSettings = function () {
-            if (gameState !== 'PAUSED') return;
-            const btns = Object.keys(CAM_MODES).map(k => { const m = CAM_MODES[k], on = k === cameraMode;
-                return `<button class="retro-btn" style="background-color:${on ? '#16a34a' : '#334155'}; font-size:11px; padding:10px 14px; text-align:left; ${on ? 'border-color:#facc15;' : ''}" onclick="setCameraMode('${k}')">${on ? '&#9658; ' : ''}${m.label}<br><span style="font-size:8px; opacity:.85; text-shadow:none; line-height:1.8;">${m.desc}</span></button>`; }).join('');
-            showUI(`<div style="text-align:center;"><h2 class="result-headline" style="color:#facc15; font-size:16px;">PAUSED - CAMERA ANGLE</h2>
-                <div style="display:flex; flex-direction:column; gap:8px; margin-top:14px; max-height:62vh; overflow-y:auto; padding:2px;">${btns}</div>
-                <button class="retro-btn" style="background-color:#3b82f6; margin-top:14px;" onclick="backToPauseMenu()">BACK</button></div>`, 'result-panel');
-        };
-        window.backToPauseMenu = function () { if (gameState === 'PAUSED') showUI(pauseMenuHTML(), 'result-panel'); };
-        window.setCameraMode = function (mode) {
-            if (!CAM_MODES[mode]) return; cameraMode = mode;
-            try { localStorage.setItem('fbCamMode', mode === 'free' ? 'normal' : mode); } catch (e) {}
-            applyCameraMode(true); showCameraSettings();
-        };
-        (function buildCameraUI() {
-            cineBars = document.createElement('div'); cineBars.style.cssText = 'display:none; position:fixed; inset:0; z-index:6; pointer-events:none;';
-            cineBars.innerHTML = '<div style="position:absolute;left:0;right:0;top:0;height:7vh;background:#000;"></div><div style="position:absolute;left:0;right:0;bottom:0;height:7vh;background:#000;"></div>';
-            document.body.appendChild(cineBars);
-            freeUI = document.createElement('div');
-            freeUI.style.cssText = 'display:none; position:fixed; left:max(10px, env(safe-area-inset-left)); top:34%; z-index:3400; flex-direction:column; gap:6px; align-items:center; touch-action:none;';
-            const B = (label, key, bg) => `<button class="retro-btn fc-btn" data-h="${key}" style="padding:8px 12px; font-size:12px; background-color:${bg || '#334155'}; min-width:44px;">${label}</button>`;
-            freeUI.innerHTML = `<div style="font-family:'Press Start 2P',monospace; font-size:8px; color:#facc15; text-shadow:1px 1px 0 #000;">FREE CAM</div>
-                <div>${B('&#9650;', 'up')}</div><div style="display:flex; gap:6px;">${B('&#9664;', 'left')}${B('&#9660;', 'down')}${B('&#9654;', 'right')}</div>
-                <div style="display:flex; gap:6px;">${B('&minus;', 'zout')}${B('+', 'zin')}</div>
-                <div style="display:flex; gap:6px;">${B('RESET', 'recenter', '#2563eb')}${B('EXIT', 'exit', '#ef4444')}</div>`;
-            document.body.appendChild(freeUI);
-            freeUI.querySelectorAll('.fc-btn').forEach(b => {
-                const k = b.dataset.h;
-                if (k === 'recenter') { b.addEventListener('pointerdown', e => { e.stopPropagation(); recenterFreeCam(); }); return; }
-                if (k === 'exit') { b.addEventListener('pointerdown', e => { e.stopPropagation(); cameraMode = 'normal'; applyCameraMode(false); }); return; }
-                const on = e => { e.preventDefault(); e.stopPropagation(); freeCam.hold[k] = true; }, off = () => { freeCam.hold[k] = false; };
-                b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off); b.addEventListener('pointercancel', off);
-            });
-            // desktop: wheel zooms, right-mouse drag pans
-            canvas.addEventListener('wheel', e => { if (cameraMode !== 'free') return; e.preventDefault(); freeCam.zoom = Math.max(camUnit() * 0.12, Math.min(camUnit() * 3.5, freeCam.zoom * Math.exp(-e.deltaY * 0.0012))); }, { passive: false });
-            canvas.addEventListener('contextmenu', e => { if (cameraMode === 'free') e.preventDefault(); });
-            window.addEventListener('pointerdown', e => { if (cameraMode === 'free' && e.button === 2) freeCam.drag = { x: e.clientX, y: e.clientY }; });
-            window.addEventListener('pointermove', e => {
-                if (!freeCam.drag) return; const sx = e.clientX - freeCam.drag.x, sy = e.clientY - freeCam.drag.y; freeCam.drag.x = e.clientX; freeCam.drag.y = e.clientY;
-                const z = freeCam.zoom, wy = sy / (z * camera.pitch), wx = (sx - wy * z * camera.skew) / (z * X_STRETCH); freeCam.x -= wx; freeCam.y -= wy;
-            });
-            window.addEventListener('pointerup', () => { freeCam.drag = null; });
-            /* applied after resize() */
-        })();
 
         let gameState = 'COIN_TOSS'; let possession = ''; let playState = ''; let players = []; 
         let lineOfScrimmage = 0; let firstDownLine = 0; let down = 1; let offenseDirection = -1;
@@ -3615,8 +3596,9 @@ const PXS = (function () {
         if (o.hasBall) {
             const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
             const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15); const ca = Math.cos(ang), sa = Math.sin(ang);
-            for (let y = Math.floor(by - 4); y <= Math.ceil(by + 4); y++) for (let x = Math.floor(bx - 4); x <= Math.ceil(bx + 4); x++) {
-                const dx = x + .5 - bx, dy = y + .5 - by; const u = dx * ca + dy * sa, v = -dx * sa + dy * ca; if ((u * u) / (2.7 * 2.7) + (v * v) / (1.7 * 1.7) > 1) continue;
+            const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1));
+            for (let y = Math.floor(by - 4 * bs); y <= Math.ceil(by + 4 * bs); y++) for (let x = Math.floor(bx - 4 * bs); x <= Math.ceil(bx + 4 * bs); x++) {
+                const dx = x + .5 - bx, dy = y + .5 - by; const u = (dx * ca + dy * sa) / bs, v = (-dx * sa + dy * ca) / bs; if ((u * u) / (2.7 * 2.7) + (v * v) / (1.7 * 1.7) > 1) continue;
                 let c = v > .6 ? pack(120, 53, 15) : pack(180, 83, 9);
                 if (Math.abs(u) < .8 && v < -.2) c = pack(250, 250, 250);
                 put(x, y, c);
@@ -4764,7 +4746,7 @@ const PXS = (function () {
                 if (isActivePlayerForClient && !isIntroScene && !p.isRef) {
                     const hasSt = p.rp && p.rp.stam != null && window.StatsBridge && StatsBridge.active(), st = hasSt ? p.rp.stam : 100;
                     const spr = getStaRing(Math.ceil(st / 100 * 10), st > 60 ? 0 : st > 30 ? 1 : 2, st < 25 && Math.floor(Date.now() / 140) % 2 === 0);
-                    const spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22);   // exactly the player sprites' pixel size
+                    const spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22) * playerSizeScale;   // follows the player's visual scale
                     const dw = Math.round(spr.width * spx), dh = Math.round(spr.height * spx);
                     ctx.save(); ctx.translate(p.x * PPY, p.y * PPY); ctx.transform(1, 0, -camera.skew / X_STRETCH, 1, 0, 0); ctx.scale(1 / X_STRETCH, 1 / camera.pitch);   // back to flat screen pixels
                     ctx.imageSmoothingEnabled = spx < 1.6; ctx.drawImage(spr, Math.round(-dw / 2), Math.round(-dh / 2), dw, dh); ctx.restore();
@@ -4780,11 +4762,12 @@ const PXS = (function () {
                 if (p.isDiving && p.diveTimer < 20) shadowSize -= Math.sin((p.diveTimer / 20) * Math.PI) * (PPY * 0.45);
                 else if (p.isLunging) { let lt = Math.min(1, (p.lungeTimer || 0) / 12); shadowSize -= Math.sin(lt * Math.PI) * (PPY * 0.3); } 
                 else if (p.hasBall && gameState === 'TACKLED') { let t = Math.min(1, (p.tackleTimer || 0) / 15); shadowSize -= Math.sin(t * Math.PI) * (PPY * 0.3); }
+                shadowSize *= p.isRef ? refSizeScale : playerSizeScale;
                 ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x * PPY, p.y * PPY, Math.max(0, shadowSize) / X_STRETCH, Math.max(0, shadowSize), 0, 0, Math.PI * 2); ctx.fill();
             });
             
             if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
-                let ballShadowSize = PPY * 0.4; if (ball.z > 0) ballShadowSize = Math.max(PPY * 0.1, PPY * 0.4 - (ball.z * 0.08));
+                let ballShadowSize = PPY * 0.4 * ballSizeScale; if (ball.z > 0) ballShadowSize = Math.max(PPY * 0.1, PPY * 0.4 * ballSizeScale - (ball.z * 0.08));
                 ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(ball.x * PPY, ball.y * PPY, ballShadowSize / X_STRETCH, ballShadowSize, 0, 0, Math.PI * 2); ctx.fill();
             }
             ctx.restore(); 
@@ -4919,12 +4902,13 @@ const PXS = (function () {
                 let frontArmA = armAngle2, frontArmB = aB2;
                 if (p.hasBall && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else { frontArmA = 0.1; frontArmB = 2.0; } }
                 let spriteCanvas = PXS.cached({
-                    facing: p.facing, girth: (p.girth || 1.0), isRef: !!p.isRef, hasFlag: !!p.hasFlag, hasBall: !!p.hasBall,
+                    facing: p.facing, girth: (p.girth || 1.0), isRef: !!p.isRef, hasFlag: !!p.hasFlag, hasBall: !!p.hasBall, ballScale: ballSizeScale,
                     skin: cSkin, jersey: cJersey, pants: cPants, helmet: cHelmet, jerseyDetail: cJerseyDetail, helmetStripe: cHelmetStripe, pantsStripe: cPantsStripe,
                     pitch: pitchQ, lean: leanA, plant: plantPose, bob: bobPx, breath: breathPx,
                     armA1: armAngle1, armA2: frontArmA, armB1: aB1, armB2: frontArmB, legA1: legAngle1, legA2: legAngle2, legK1: kn1, legK2: kn2
                 });
-                let spx = Math.max(0.45, pScale * 2.9 * 1.22);
+                const actorSpriteScale = p.isRef ? refSizeScale : playerSizeScale;
+                let spx = Math.max(0.45, pScale * 2.9 * 1.22) * actorSpriteScale;
                 ctx.imageSmoothingEnabled = spx < 1.6;
                 let spriteTop = Math.round(3 * pScale + (-diveHeight + (plantPose ? 0 : groundDrop)) * pScale - PXS.GROUND * spx);
                 ctx.drawImage(spriteCanvas, Math.round(-PXS.HX * spx), spriteTop, Math.round(PXS.W * spx), Math.round(PXS.H * spx));
@@ -4932,7 +4916,7 @@ const PXS = (function () {
             });
             // ---- clarity markers, drawn on top of every sprite: YELLOW arrow = ball carrier, BLUE arrow = YOU ----
             if (!isIntroScene && ['PRE_SNAP', 'PLAYING', 'BALL_IN_AIR', 'BALL_LOOSE'].includes(gameState)) {
-                const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22), _bob = Math.sin(Date.now() / 140) * _spx * 1.4;
+                const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22) * playerSizeScale, _bob = Math.sin(Date.now() / 140) * _spx * 1.4;
                 const _me = (!isMultiplayer || isMpHost) ? player : (isMpClient ? p2Player : null), _bc = players.find(q => q.hasBall);
                 const _arrow = (q, fill) => {
                     const sc = toScreen(q.x, q.y), w = Math.max(3, _spx * 3.0), hg = w * 1.15, tipY = -19.5 * _spx + _bob;
@@ -4948,7 +4932,7 @@ const PXS = (function () {
             drawGrounds(NEAR_T, 1e9);
 
             if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
-                let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06; let visualHeight = ball.z * camera.zoom * 0.6; 
+                let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06 * ballSizeScale; let visualHeight = ball.z * camera.zoom * 0.6; 
                 ctx.save(); ctx.translate(bScreen.x, bScreen.y - visualHeight);
                 
                 let isSpiralPass = (gameState === 'BALL_IN_AIR' && (isPassing || ball.isKicked));
@@ -5116,7 +5100,7 @@ const PXS = (function () {
             }
         }
 
-        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; ctx.imageSmoothingEnabled = false; camera.baseZoom = canvas.height * 0.045 * CAM_MODES[cameraMode].z; camera.zoom = camera.baseZoom; if (cameraMode !== 'free') applyCameraMode(true); }
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; ctx.imageSmoothingEnabled = false; camera.baseZoom = camUnit(); camera.zoom = camera.baseZoom; applyCameraMode(true); }
         
         let lastTime = 0; let accumulator = 0; const timeStep = 1000 / 60; 
 
@@ -5143,6 +5127,8 @@ const PXS = (function () {
             let frameTime = timestamp - lastTime; lastTime = timestamp;
             if (frameTime > 100) frameTime = 100; 
 
+            const spriteSizePanel = document.getElementById('sprite-size-panel');
+            if (spriteSizePanel) spriteSizePanel.style.display = (!window._csBgActive && !isIntroScene && canvas.style.display !== 'none') ? 'block' : 'none';
             if (window._csBgActive) { accumulator = 0; if (window.csBgStep) window.csBgStep(frameTime); drawGame(); window._mpOverlay = false; requestAnimationFrame(loop); return; } // career menu backdrop: real stadium, no game sim
             if (canvas.style.display === 'none') { accumulator = 0; requestAnimationFrame(loop); return; } // hub is showing: nothing to simulate or draw
             accumulator += frameTime;
@@ -5623,12 +5609,18 @@ const PXS = (function () {
             const pointer = document.createElement('div'); pointer.id = 'tut-pointer'; pointer.innerHTML = POINTER_SVG;
             const bar = document.createElement('div'); bar.id = 'tut-bar'; bar.innerHTML = '<div id="tut-bar-in"><div id="tut-bar-msg"></div><button class="retro-btn" id="tut-continue" disabled>CONTINUE</button></div>';
             const modal = document.createElement('div'); modal.id = 'of-modal'; modal.innerHTML = '<div id="of-panel"><div id="of-sheet"></div><button class="retro-btn" id="of-close">BACK</button></div>';
-            body.append(backdrop, pointer, bar, modal);
+            const skipTut = document.createElement('button');
+            skipTut.id = 'skip-tutorial-btn';
+            skipTut.className = 'retro-btn';
+            skipTut.textContent = 'SKIP TUTORIAL';
+            skipTut.style.cssText = 'position:fixed;display:none;top:max(12px, env(safe-area-inset-top));right:max(12px, env(safe-area-inset-right));z-index:5200;padding:10px 12px;font-size:clamp(8px, 2vw, 10px);background:#dc2626;border:3px solid #fff;white-space:nowrap;';
+            body.append(backdrop, pointer, bar, modal, skipTut);
             document.getElementById('tut-avatar').innerHTML = harrisSVG();
 
             const tut = { on: false, phase: '', viewed: new Set(), need: 3, allow: null };
             let typer = null, onNext = null, fullText = '';
             function say(text, next) {
+                if (!tut.on) return; // Ignore pending tutorial callbacks after Skip Tutorial is pressed.
                 onNext = next; fullText = text; const el = document.getElementById('tut-text'); el.textContent = ''; backdrop.style.display = 'flex'; clearInterval(typer);
                 let i = 0; typer = setInterval(() => { i += 1; el.textContent = text.slice(0, i); if (i >= text.length) clearInterval(typer); }, 30);
             }
@@ -5653,6 +5645,32 @@ const PXS = (function () {
             function lockTab(n) { tut.allow = n; document.querySelectorAll('.hub-tab').forEach(b => b.classList.toggle('tut-dim', !!n && b !== tabEl(n))); }
             function pointTab(n) { lockTab(n); const o = tabEl(n); if (o) o.classList.add('tut-glow'); pointAt(() => tabEl(n)); }
             function unlock() { lockTab(null); unpoint(); }
+            function skipTutorial() {
+                if (!tut.on) return;
+                // Stop tutorial text and clear all tutorial-only overlays/locks.
+                tut.on = false;
+                tut.phase = '';
+                tut.allow = null;
+                tut.viewed.clear();
+                career.tutorialDone = true;
+                clearInterval(typer); typer = null; onNext = null;
+                backdrop.style.display = 'none';
+                bar.style.display = 'none';
+                pointer.style.display = 'none';
+                cancelAnimationFrame(raf);
+                modal.style.display = 'none';
+                const hubContent = document.getElementById('hub-content');
+                if (hubContent) { hubContent.style.paddingBottom = ''; hubContent.style.justifyContent = ''; }
+                // If a pack reveal was in progress, dismiss it without collecting any items or marking it claimed.
+                const packModal = document.getElementById('pk-modal');
+                if (packModal) { packModal.style.display = 'none'; packModal.innerHTML = ''; packModal.className = ''; packModal.onclick = null; }
+                ofEdit = false;
+                unlock();
+                skipTut.style.display = 'none';
+                if (typeof window.switchHubTab === 'function') window.switchHubTab('HOME');
+                // Deliberately do not set career.welcomeClaimed: the Welcome Pack remains unopened.
+            }
+            skipTut.addEventListener('click', skipTutorial);
 
             // ================= new players: packs =================
             const DEFROLE = { QB: 'QB', RB: 'RB', TE: 'TE', WR: 'WR', OL: 'OL', DL: 'DL', LB: 'LB', CB: 'CB', S: 'S', K: 'K' };
@@ -5825,7 +5843,7 @@ const PXS = (function () {
                 if (tut.on && tut.phase === 'lineup') {
                     tut.phase = 'done';
                     setTimeout(() => say(`"That's the whole loop, Coach: open packs, find talent, and upgrade your lineup. Keep building this program!"`, () => {
-                        closeDialog(); tut.on = false; tut.phase = ''; unlock(); career.tutorialDone = true; ofEdit = false; switchHubTab('HOME');
+                        closeDialog(); tut.on = false; tut.phase = ''; unlock(); career.tutorialDone = true; skipTut.style.display = 'none'; ofEdit = false; switchHubTab('HOME');
                     }), 900);
                 }
             }
@@ -6234,7 +6252,7 @@ const PXS = (function () {
             };
             window.shOpenWelcome = function () {
                 if (career.welcomeClaimed) return;
-                if (!tut.on || tut.phase !== 'pack') { toast('THE WELCOME PACK OPENS DURING THE TUTORIAL'); return; }
+                if (tut.on && tut.phase !== 'pack') { toast('FINISH OR SKIP THE TUTORIAL FIRST'); return; }
                 openPack({ title: 'WELCOME PACK', cost: 0, plays: PLAY_DEFS.map(d => d.id), art: { a: 'WELCOME', b: 'PACK', i: 'PLAYERS + PLAYS' }, onClaim: () => { career.welcomeClaimed = true; } });
             };
 
@@ -6279,6 +6297,7 @@ const PXS = (function () {
                 if (!career || career.tutorialDone) return; ensureRoster(); career.bench = career.bench || [];
                 const hub = document.getElementById('hub-container'); if (!hub || hub.style.display === 'none') return;
                 tut.on = true; tut.phase = 'intro'; tut.viewed.clear();
+                skipTut.style.display = 'block';
                 say(`"Coach, glad to finally have you here. We've got a football program with potential, but we've had a rough few seasons."`, () =>
                     say(`"We've got some good kids, but we're going to need to develop them if we want to compete. Let's take a look at your roster."`, () => { closeDialog(); tut.phase = 'point'; pointTab('OFFICE'); }));
             };
