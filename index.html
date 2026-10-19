@@ -15,7 +15,7 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { width: 100%; height: 100%; background-color: #0f172a; overflow: hidden; display: flex; justify-content: center; align-items: center; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         canvas { display: block; image-rendering: -moz-crisp-edges; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; image-rendering: pixelated; z-index: 1; }
-        .scanlines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03)); background-size: 100% 4px, 3px 100%; z-index: 50; pointer-events: none; opacity: 0.6; }
+        canvas#gameCanvas { filter: brightness(1.10) saturate(1.13) contrast(1.025); outline: none; }
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: none; font-family: 'Press Start 2P', monospace; color: white; text-align: center; text-shadow: 4px 4px 0px #000; }
         .ui-panel { background-color: rgba(15, 23, 42, 0.97); border: 4px solid #ffffff; border-radius: 10px; padding: 32px 40px; pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 16px; box-shadow: 10px 10px 0px rgba(0,0,0,0.8); position: relative; overflow: hidden; width: min(90vw, 480px); box-sizing: border-box; }
         .ui-panel.result-panel { width: min(84vw, 340px); padding: clamp(16px, 5vw, 28px); gap: 10px; }
@@ -521,7 +521,6 @@
     </style>
 </head>
 <body>
-    <div class="scanlines"></div>
     <div id="ui-container" class="ui-layer"></div>
     <div id="transition-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #000; z-index: 3000; opacity: 0; pointer-events: none; transition: opacity 0.5s ease;"></div>
     
@@ -975,7 +974,7 @@
             // --- mowing stripes (every 5 yards) with a mid-stripe shade for depth ---
             for (let yd = 10; yd < 110; yd += 5) {
                 const alt = ((yd - 10) / 5) % 2 === 0;
-                R(yx(yd), 0, 5 * FPX, PH, alt ? '#1f7a2c' : '#1a6b27');
+                R(yx(yd), 0, 5 * FPX, PH, alt ? '#27943b' : '#218033');
             }
             // --- grass speckle texture (individual pixels, same size as sprite pixels) ---
             for (let i = 0; i < PW * PH * 0.16; i++) {
@@ -1643,7 +1642,7 @@
         const SCREEN_SPEED_BLEND = 0.7;
         // ===== SHARED MOVEMENT + CONTACT HELPERS (used by the player AND the CPU so everyone follows the same rules) =====
         // Fixed reference camera angles so movement speed never depends on the camera mode.
-        const MOVE_PITCH = 0.55, MOVE_SKEW = 0.7;
+        const MOVE_PITCH = 1, MOVE_SKEW = 0;
         // Speed multiplier for moving in world direction (dx, dy): makes pace look even on screen. Straight downfield = 1.0.
         function worldDirSpeedMul(dx, dy) {
             const len = Math.hypot(dx, dy); if (len < 1e-6) return 1;
@@ -1794,24 +1793,24 @@
         }
 
         const keys = {}; let spacePressed = false; window.addEventListener('keydown', (e) => { keys[e.code] = true; }); window.addEventListener('keyup', (e) => keys[e.code] = false);
-        const camera = { x: 60, y: 0, zoom: 45, baseZoom: 45, pitch: 0.55, skew: 0.7, target: player, currentX: 60, currentY: 0 };
+        const camera = { x: 60, y: 0, zoom: 45, baseZoom: 45, pitch: 1, skew: 0, target: player, currentX: 60, currentY: 0 };
         // Online: when the view is mirrored left<->right the perspective lean (skew) has to flip too, otherwise the field/stadium
         // leans the wrong way and looks inverted. Everything that reads camera.skew (drawing, input, stadium) stays consistent.
         { const s0 = camera.skew; camera._skew = s0; Object.defineProperty(camera, 'skew', { configurable: true, enumerable: true, get() { return window._mpMirror ? -this._skew : this._skew; }, set(v) { this._skew = v; } }); }
 
         // ===== CAMERA MODES (pause menu > SETTINGS) =====
         const CAM_MODES = {
-            normal:    { label: 'NORMAL',    desc: 'Classic game view',            z: 1,    pitch: 0.55, skew: 0.7, lag: 0.2 },
-            wide:      { label: 'WIDE',      desc: 'See more of the field',        z: 0.6,  pitch: 0.55, skew: 0.7, lag: 0.2 },
-            far:       { label: 'FAR',       desc: 'Whole field and the track',    z: 0.2,  pitch: 0.55, skew: 0.7, lag: 0.2 },
-            close:     { label: 'CLOSE',     desc: 'Tight on the action',          z: 1.55, pitch: 0.55, skew: 0.7, lag: 0.2 },
-            dynamic:   { label: 'DYNAMIC',   desc: 'Zooms in and leads the play',  z: 1,    pitch: 0.55, skew: 0.7, lag: 0.14 },
-            cinematic: { label: 'CINEMATIC', desc: 'Low angle, drift, letterbox',  z: 1.12, pitch: 0.42, skew: 0.3, lag: 0.07 },
-            free:      { label: 'FREE CAM',  desc: 'Pan and zoom it yourself',     z: 1,    pitch: 0.55, skew: 0.7, lag: 0.35 }
+            normal:    { label: 'NORMAL',    desc: 'Classic flat field view',       z: 1,    pitch: 1, skew: 0, lag: 0.2 },
+            wide:      { label: 'WIDE',      desc: 'See more of the field',        z: 0.6,  pitch: 1, skew: 0, lag: 0.2 },
+            far:       { label: 'FAR',       desc: 'Whole field and the track',    z: 0.2,  pitch: 1, skew: 0, lag: 0.2 },
+            close:     { label: 'CLOSE',     desc: 'Closer action, full field width', z: 1.15, pitch: 1, skew: 0, lag: 0.2 },
+            dynamic:   { label: 'DYNAMIC',   desc: 'Zooms in and leads the play',  z: 1,    pitch: 1, skew: 0, lag: 0.14 },
+            cinematic: { label: 'CINEMATIC', desc: 'Flat field, drift, letterbox', z: 1.12, pitch: 1, skew: 0, lag: 0.07 },
+            free:      { label: 'FREE CAM',  desc: 'Pan and zoom it yourself',     z: 1,    pitch: 1, skew: 0, lag: 0.35 }
         };
         let cameraMode = 'normal';
         try { const sv = localStorage.getItem('fbCamMode'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
-        const camUnit = () => canvas.height * 0.045;
+        const camUnit = () => canvas.height * 0.0142;
         const freeCam = { x: 60, y: 0, zoom: 45, hold: {}, drag: null };
         const dyn = { mul: 1, lead: 0, spd: 0, px: 60, py: 0 };
         let cineBars = null, freeUI = null;
@@ -1842,11 +1841,11 @@
                 if (isPassing || gameState === 'BALL_IN_AIR') want = 0.82; else if (gameState === 'PRE_SNAP') want = 0.9;
                 dyn.mul += (want - dyn.mul) * 0.04; camera.baseZoom = unit * dyn.mul;
                 if (camera.target) { const f = camera.target.facing || 0; dyn.lead += (f * 3 - dyn.lead) * 0.04; camera.x += dyn.lead; }
-                camera.pitch = 0.55 + 0.05 * Math.sin(t / 2200); camera.skew = 0.7 + 0.1 * Math.sin(t / 3100);
+                camera.pitch = 1; camera.skew = 0;
             } else if (cameraMode === 'cinematic') {
                 camera.baseZoom = unit * m.z * (1 + 0.05 * Math.sin(t / 4500));
                 if (camera.target) { camera.x += Math.sin(t / 2800) * 1.4; camera.y += Math.cos(t / 3500) * 0.8; }
-                camera.skew = 0.3 + 0.12 * Math.sin(t / 5200);
+                camera.pitch = 1; camera.skew = 0;
             }
         }
         function recenterFreeCam() { const tg = camera.target; freeCam.x = (tg && tg.x !== undefined) ? tg.x : 60; freeCam.y = (tg && tg.y !== undefined) ? tg.y : 0; freeCam.zoom = camUnit(); }
@@ -2151,7 +2150,7 @@
         }
 
         function screenToWorldGround(sx, sy) {
-            const renderCenterY = canvas.height * 0.6; let worldDy = (sy - renderCenterY) / (camera.zoom * camera.pitch); let y = camera.currentY + worldDy; let dx = (sx - canvas.width / 2) - (worldDy * camera.zoom * camera.skew); let x = camera.currentX + dx / (camera.zoom * X_STRETCH); return { x, y };
+            const renderCenterY = canvas.height * 0.5; let worldDy = (sy - renderCenterY) / (camera.zoom * camera.pitch); let y = camera.currentY + worldDy; let dx = (sx - canvas.width / 2) - (worldDy * camera.zoom * camera.skew); let x = camera.currentX + dx / (camera.zoom * X_STRETCH); return { x, y };
         }
 
         function updatePassProjection() {
@@ -2237,7 +2236,7 @@
 
         function toScreen(yardX, yardY) {
             let dx = (yardX - camera.currentX) * camera.zoom * X_STRETCH; let dy = (yardY - camera.currentY) * camera.zoom;
-            const renderCenterY = canvas.height * 0.6; let screenX = (canvas.width / 2) + dx + (dy * camera.skew) + screenShake.x; let screenY = renderCenterY + (dy * camera.pitch) + screenShake.y;
+            const renderCenterY = canvas.height * 0.5; let screenX = (canvas.width / 2) + dx + (dy * camera.skew) + screenShake.x; let screenY = renderCenterY + (dy * camera.pitch) + screenShake.y;
             return { x: (window._mpOverlay ? canvas.width - screenX : screenX), y: screenY };
         }
 
@@ -3047,7 +3046,7 @@
             if (gameState === 'PAUSED') return;
             if (gameState === 'DIALOG') { if (keys['Space']) { if (!spacePressed) { spacePressed = true; advanceDialog(); } } else spacePressed = false; return; }
 
-            { const lag = (isMultiplayer && isMpClient) ? 0.2 : CAM_MODES[cameraMode].lag; camera.currentX += (camera.x - camera.currentX) * lag; camera.currentY += (camera.y - camera.currentY) * lag; }
+            { const lag = (isMultiplayer && isMpClient) ? 0.2 : CAM_MODES[cameraMode].lag; camera.currentX += (camera.x - camera.currentX) * lag; if (cameraMode !== 'free' && !isIntroScene) { camera.y = 0; camera.currentY = 0; } else { camera.currentY += (camera.y - camera.currentY) * lag; } }
 
             if (isIntroScene) {
                 if (introScriptState === 'PRE_SNAP_WAIT') { introTimer--; if (introTimer <= 0) { snapBall(); introScriptState = 'SCRIPTED_RUN'; } } 
@@ -3456,17 +3455,17 @@
 
             // Camera adjustments
             if (isIntroScene && (introScriptState === 'HEADSET_PAN_DOWN' || introScriptState === 'HEADSET_PROMPT')) { camera.target = headset; camera.zoom += (camera.baseZoom * 3.5 - camera.zoom) * 0.05; } 
-            else if (gameState === 'INTERCEPTION_MINIGAME' || gameState === 'INTERCEPTION_RESULT') { camera.target = intMinigame.defender; camera.zoom += (camera.baseZoom * 1.6 - camera.zoom) * 0.1; } 
+            else if (gameState === 'INTERCEPTION_MINIGAME' || gameState === 'INTERCEPTION_RESULT') { camera.target = intMinigame.defender; const fitZoom = Math.min(camera.baseZoom * 1.6, camUnit() * 1.28); camera.zoom += (fitZoom - camera.zoom) * 0.1; } 
             else if (gameState === 'TOUCHDOWN_CELEBRATION' && celebratingPlayer) {
                 celebrationTimer++; celebratingPlayer.animTimer += 0.32; celebratingPlayer.hopOffset = Math.abs(Math.sin(celebrationTimer * 0.28)) * 0.5;
                 if (celebrationTimer % 8 === 0) spawnConfettiBurst(celebratingPlayer.x + (Math.random() - 0.5) * 5, celebratingPlayer.y + (Math.random() - 0.5) * FIELD_WIDTH_YARDS * 0.8, 16);
                 if (celebrationTimer === CELEBRATION_DURATION - 25) hideTouchdownBanner();
                 if (celebrationTimer >= CELEBRATION_DURATION) { let cpuScored = celebratingPlayer.isCPU; celebratingPlayer.hopOffset = 0; celebratingPlayer = null; celebrationTimer = 0; hideTouchdownBanner(); refs.forEach(r=>r.state='IDLE'); setupPAT(cpuScored); } 
-                else { camera.target = celebratingPlayer; camera.zoom += (camera.baseZoom * 1.35 - camera.zoom) * 0.06; }
+                else { camera.target = celebratingPlayer; const fitZoom = Math.min(camera.baseZoom * 1.35, camUnit() * 1.28); camera.zoom += (fitZoom - camera.zoom) * 0.06; }
             } 
             else if (isRefCam && refCamTarget) { 
                 camera.target = refCamTarget; 
-                let desiredZoom = isRefPenaltyZoom ? camera.baseZoom * 2.2 : camera.baseZoom * 1.6; 
+                let desiredZoom = Math.min(isRefPenaltyZoom ? camera.baseZoom * 2.2 : camera.baseZoom * 1.6, camUnit() * 1.28); 
                 camera.zoom += (desiredZoom - camera.zoom) * 0.08; 
             } 
             else if (isAimingPass) {
@@ -3477,9 +3476,10 @@
             else { if (Math.abs(camera.zoom - camera.baseZoom) > 0.01) camera.zoom += (camera.baseZoom - camera.zoom) * 0.08; }
 
             if (camera.target) {
-                camera.x = camera.target.x; camera.y = camera.target.y; 
+                camera.x = camera.target.x; camera.y = (cameraMode === 'free' || isIntroScene) ? camera.target.y : 0;
             }
             cameraModeUpdate();
+            if (cameraMode !== 'free' && !isIntroScene) camera.y = 0;
             updateScoreboard();
         }
 
@@ -4174,15 +4174,62 @@ const PXS = (function () {
         }
 
         function drawStadium() {
-            let topSideline = toScreen(camera.currentX, -(FIELD_WIDTH_YARDS / 2 + GND_AP + FAR_LAWN)); let horizonY = topSideline.y;
-            ctx.fillStyle = '#0a4a15'; ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
-            ctx.fillStyle = '#0b1120'; ctx.fillRect(0, 0, canvas.width, Math.max(0, horizonY));
+            const topSideline = toScreen(camera.currentX, -(FIELD_WIDTH_YARDS / 2 + GND_AP + FAR_LAWN));
+            const horizonY = topSideline.y;
+            // Clear afternoon palette: lively distant greens, a bright sky and a soft sun glow.
+            ctx.fillStyle = '#4c9955';
+            ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
+            ctx.fillStyle = '#54a9ef';
+            ctx.fillRect(0, 0, canvas.width, Math.max(0, horizonY));
             if (horizonY > 0) {
-                const sky = ctx.createLinearGradient(0, 0, 0, horizonY); sky.addColorStop(0, '#070b16'); sky.addColorStop(1, '#1a2542');
-                ctx.fillStyle = sky; ctx.fillRect(0, 0, canvas.width, horizonY);
+                const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+                sky.addColorStop(0, '#3294eb');
+                sky.addColorStop(0.56, '#70c9f6');
+                sky.addColorStop(1, '#d4efff');
+                ctx.fillStyle = sky;
+                ctx.fillRect(0, 0, canvas.width, horizonY);
+
+                // Soft square-edged sunlight keeps the world atmospheric without a CRT filter.
+                const sunX = canvas.width * 0.83;
+                const sunY = Math.max(12, horizonY * 0.34);
+                const sunR = Math.max(24, Math.min(canvas.width, horizonY * 0.95));
+                const glow = ctx.createRadialGradient(sunX, sunY, 1, sunX, sunY, sunR);
+                glow.addColorStop(0, 'rgba(255,246,190,0.34)');
+                glow.addColorStop(0.42, 'rgba(255,232,160,0.15)');
+                glow.addColorStop(1, 'rgba(255,232,160,0)');
+                ctx.fillStyle = glow;
+                ctx.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
+
+                // Small stepped clouds add a little pixel-art character to the open sky.
+                const cloud = (x, y, scale, alpha) => {
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(Math.round(x), Math.round(y + scale), scale * 5, scale * 2);
+                    ctx.fillRect(Math.round(x + scale), Math.round(y), scale * 3, scale * 3);
+                    ctx.fillRect(Math.round(x + scale * 4), Math.round(y + scale * 0.5), scale * 2, scale * 2.5);
+                    ctx.fillStyle = '#d9f1ff';
+                    ctx.fillRect(Math.round(x + scale), Math.round(y + scale * 2.5), scale * 5, Math.max(1, Math.round(scale * 0.5)));
+                    ctx.restore();
+                };
+                const skyH = Math.max(0, horizonY);
+                if (skyH > 48) {
+                    const drift = Math.round((canvas.width * 0.025) % Math.max(1, canvas.width * 0.08));
+                    cloud(canvas.width * 0.13 + drift, skyH * 0.20, Math.max(3, Math.round(Math.min(8, canvas.width / 180))), 0.72);
+                    cloud(canvas.width * 0.60 - drift, skyH * 0.12, Math.max(3, Math.round(Math.min(7, canvas.width / 210))), 0.58);
+                }
+                // A crisp square sun sits above the stands.
+                const sunSize = Math.max(7, Math.round(Math.min(16, canvas.width / 100)));
+                ctx.fillStyle = 'rgba(255,255,255,0.78)';
+                ctx.fillRect(Math.round(sunX - sunSize / 2), Math.round(sunY - sunSize / 2), sunSize, sunSize);
+                ctx.fillStyle = '#fff1a8';
+                ctx.fillRect(Math.round(sunX - sunSize / 2 + 2), Math.round(sunY - sunSize / 2 + 2), Math.max(2, sunSize - 4), Math.max(2, sunSize - 4));
             }
-            const hz = ctx.createLinearGradient(0, horizonY, 0, horizonY + 70); hz.addColorStop(0, 'rgba(0,12,0,0.45)'); hz.addColorStop(1, 'rgba(0,12,0,0)');
-            ctx.fillStyle = hz; ctx.fillRect(0, Math.max(0, horizonY), canvas.width, 70);
+            const hz = ctx.createLinearGradient(0, horizonY, 0, horizonY + 70);
+            hz.addColorStop(0, 'rgba(18,77,37,0.16)');
+            hz.addColorStop(1, 'rgba(18,77,37,0)');
+            ctx.fillStyle = hz;
+            ctx.fillRect(0, Math.max(0, horizonY), canvas.width, 70);
         }
 
 
@@ -4235,10 +4282,10 @@ const PXS = (function () {
             // mowing stripes continue from the field (every 5 yards), a touch darker than the field
             for (let yd = -XP; yd < FIELD_LENGTH_YARDS + XP; yd += 5) {
                 const alt = (((Math.floor((yd - 10) / 5)) % 2) + 2) % 2 === 0;
-                R((yd + XP) * FPX, 0, 5 * FPX, PH, alt ? '#1b7028' : '#176324');
+                R((yd + XP) * FPX, 0, 5 * FPX, PH, alt ? '#238237' : '#1e722f');
             }
             // fade darker the further from the field (stadium shadow) + subtle lighter band near the line
-            const fade = (y0, y1, a0, a1) => { const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, 'rgba(0,20,0,' + a0 + ')'); gr.addColorStop(1, 'rgba(0,20,0,' + a1 + ')'); g.fillStyle = gr; g.fillRect(0, Math.min(y0, y1), PW, Math.abs(y1 - y0)); };
+            const fade = (y0, y1, a0, a1) => { const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, 'rgba(0,20,0,' + (a0 * 0.62) + ')'); gr.addColorStop(1, 'rgba(0,20,0,' + (a1 * 0.62) + ')'); g.fillStyle = gr; g.fillRect(0, Math.min(y0, y1), PW, Math.abs(y1 - y0)); };
             fade(AP * FPX, 0, 0.0, 0.42); fade((AP + Wd) * FPX, PH, 0.0, 0.42);
             // grass speckle + little 2px blades, clustered so it reads as turf not noise
             for (let i = 0; i < PW * PH * 0.2; i++) {
@@ -4624,7 +4671,7 @@ const PXS = (function () {
             drawStadium();
 
             ctx.save();
-            const renderCenterY = canvas.height * 0.6;
+            const renderCenterY = canvas.height * 0.5;
             ctx.translate(canvas.width / 2 + screenShake.x, renderCenterY + screenShake.y);
             ctx.scale(X_STRETCH, camera.pitch); ctx.transform(1, 0, camera.skew / X_STRETCH, 1, 0, 0); ctx.translate(-camera.currentX * camera.zoom, -camera.currentY * camera.zoom);
             const PPY = camera.zoom; const fieldTop = -(FIELD_WIDTH_YARDS / 2) * PPY; const fieldHeight = FIELD_WIDTH_YARDS * PPY;
