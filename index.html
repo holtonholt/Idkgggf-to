@@ -519,28 +519,6 @@
         .pk-playbig .pk-pname { color: #fff; font-size: clamp(12px, 4vw, 16px); text-shadow: 3px 3px 0 #000; text-align: center; }
         .pk-playbig .playbook-svg { width: min(240px, 66vw); height: min(240px, 66vw); border-width: 4px; box-shadow: 6px 6px 0 rgba(0,0,0,.8); }
     
-        /* Temporary in-game display scale controls. Sprite sizes are fixed in code. */
-        #display-size-panel {
-            display: none; position: fixed; left: max(14px, env(safe-area-inset-left));
-            top: max(14px, env(safe-area-inset-top)); z-index: 1800;
-            width: min(270px, calc(100vw - 28px)); padding: 11px 12px 10px;
-            box-sizing: border-box; background: rgba(10, 15, 25, .94);
-            border: 3px solid #facc15; box-shadow: 5px 5px 0 rgba(0,0,0,.72);
-            color: #fff; font-family: 'Press Start 2P', monospace; pointer-events: auto;
-        }
-        #display-size-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
-        #display-size-title { color:#facc15; font-size:8px; line-height:1.6; }
-        .size-control { margin-top:9px; }
-        .size-control-head { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#cbd5e1; font-size:7px; line-height:1.6; }
-        .size-control-value { color:#4ade80; font-size:8px; white-space:nowrap; text-shadow:2px 2px 0 #000; }
-        .size-range { display:block; width:100%; margin:5px 0 0; accent-color:#facc15; cursor:pointer; touch-action:pan-y; }
-        #display-size-foot { display:flex; justify-content:space-between; gap:8px; margin-top:8px; color:#94a3b8; font-size:6px; line-height:1.5; }
-        @media (max-width: 560px) {
-            #display-size-panel { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); width: 218px; padding:8px 9px; }
-            #display-size-title { font-size:7px; }
-            .size-control-head { font-size:6px; } .size-control-value { font-size:7px; }
-            .size-control { margin-top:7px; }
-        }
 </style>
 </head>
 <body>
@@ -723,27 +701,7 @@
     
     <canvas id="gameCanvas"></canvas>
 
-    <div id="display-size-panel" aria-label="Display size controls">
-        <div id="display-size-head">
-            <div id="display-size-title">DISPLAY SCALE</div>
-            <div style="color:#94a3b8;font-size:7px;">LIVE ADJUST</div>
-        </div>
-        <div class="size-control">
-            <div class="size-control-head"><label for="scoreboard-size-range">SCOREBOARD</label><span class="size-control-value" id="scoreboard-size-value">70%</span></div>
-            <input class="size-range" id="scoreboard-size-range" type="range" min="70" max="150" step="5" value="70" aria-label="Scoreboard size" oninput="setDisplayScale('scoreboard', this.value)">
-        </div>
-        <div class="size-control">
-            <div class="size-control-head"><label for="player-tag-size-range">PLAYER NAMEPLATE</label><span class="size-control-value" id="player-tag-size-value">70%</span></div>
-            <input class="size-range" id="player-tag-size-range" type="range" min="70" max="150" step="5" value="70" aria-label="Controlled player nameplate size" oninput="setDisplayScale('playerTag', this.value)">
-        </div>
-        <div class="size-control">
-            <div class="size-control-head"><label for="field-numbers-size-range">FIELD NUMBERS</label><span class="size-control-value" id="field-numbers-size-value">135%</span></div>
-            <input class="size-range" id="field-numbers-size-range" type="range" min="70" max="150" step="5" value="135" aria-label="Field yard-number size" oninput="setDisplayScale('fieldNumbers', this.value)">
-        </div>
-        <div id="display-size-foot"><span>70% SMALLER</span><span>150% LARGER</span></div>
-    </div>
-
-    <script id="ui-click-sfx">
+        <script id="ui-click-sfx">
     /* Button click sound: every completed button tap/click (not scrolls or drags), at most once per 0.2s. Works with browser autoplay rules (incl. iOS Safari / home-screen app). */
     (function () {
         const COOLDOWN_MS = 200, VOLUME = 1.0;
@@ -1860,51 +1818,10 @@
         let ballSizeScale = 1.15;
         let refSizeScale = 1.35;
 
-        // Temporary UI/field-marking scale controls. Yard numbers are baked into the field texture,
-        // so rebuild only after the user pauses slider input rather than on every pointer event.
+        // Fixed display proportions chosen by the user; no in-game size sliders.
         let fieldNumberScale = 1.35;
-        let fieldNumberRebuildTimer = null;
         let scoreboardSizeScale = 0.70;
         let playerTagSizeScale = 0.70;
-        function setDisplayScale(kind, value) {
-            const pct = Math.max(70, Math.min(150, Math.round(Number(value) || 100)));
-            const scale = pct / 100;
-            const map = {
-                scoreboard: ['scoreboard-size-value', 'scoreboard-size-range'],
-                playerTag: ['player-tag-size-value', 'player-tag-size-range'],
-                fieldNumbers: ['field-numbers-size-value', 'field-numbers-size-range']
-            };
-            const ids = map[kind];
-            if (!ids) return;
-            const valueEl = document.getElementById(ids[0]);
-            const rangeEl = document.getElementById(ids[1]);
-            if (valueEl) valueEl.textContent = pct + '%';
-            if (rangeEl && rangeEl.value !== String(pct)) rangeEl.value = String(pct);
-
-            if (kind === 'scoreboard') {
-                scoreboardSizeScale = scale;
-                document.documentElement.style.setProperty('--scoreboard-scale', String(scoreboardSizeScale));
-            } else if (kind === 'playerTag') {
-                playerTagSizeScale = scale;
-                document.documentElement.style.setProperty('--player-tag-scale', String(playerTagSizeScale));
-                // The tag is created dynamically during gameplay; this also covers an existing instance.
-                const tag = document.getElementById('player-tag');
-                if (tag) tag.style.transform = `translateX(-50%) scale(${playerTagSizeScale})`;
-            } else if (kind === 'fieldNumbers') {
-                fieldNumberScale = scale;
-                if (fieldNumberRebuildTimer) clearTimeout(fieldNumberRebuildTimer);
-                fieldNumberRebuildTimer = setTimeout(() => {
-                    try {
-                        const team = fieldTeam || (typeof qpTeams !== 'undefined' ? qpTeams[1] : null);
-                        if (!team) return;
-                        pixelFieldCanvas = buildPixelField(team);
-                        pixelFieldCanvasM = null;
-                        pixelFieldCanvasMTeam = null;
-                    } catch (err) { console.error('Could not rebuild field numbers:', err); }
-                    fieldNumberRebuildTimer = null;
-                }, 160);
-            }
-        }
         // Apply the user's saved-in-code display proportions immediately.
         document.documentElement.style.setProperty('--scoreboard-scale', String(scoreboardSizeScale));
         document.documentElement.style.setProperty('--player-tag-scale', String(playerTagSizeScale));
@@ -5172,8 +5089,6 @@ const PXS = (function () {
             let frameTime = timestamp - lastTime; lastTime = timestamp;
             if (frameTime > 100) frameTime = 100; 
 
-            const displaySizePanel = document.getElementById('display-size-panel');
-            if (displaySizePanel) displaySizePanel.style.display = (!window._csBgActive && !isIntroScene && canvas.style.display !== 'none') ? 'block' : 'none';
             if (window._csBgActive) { accumulator = 0; if (window.csBgStep) window.csBgStep(frameTime); drawGame(); window._mpOverlay = false; requestAnimationFrame(loop); return; } // career menu backdrop: real stadium, no game sim
             if (canvas.style.display === 'none') { accumulator = 0; requestAnimationFrame(loop); return; } // hub is showing: nothing to simulate or draw
             accumulator += frameTime;
@@ -6036,7 +5951,25 @@ const PXS = (function () {
             const gauss = () => { let u = 0; for (let i = 0; i < 4; i++) u += Math.random(); return (u - 2) * 1.73; };
             function newSeason(num) {
                 const N = qpTeams.length, me = career.teamIdx, others = qpTeams.map((_, i) => i).filter(i => i !== me);
-                const opps = shuf(others).slice(0, SEASON_GAMES), homes = shuf(Array.from({ length: SEASON_GAMES }, (_, i) => i < SEASON_GAMES / 2));
+                // Match teams near the user's current overall so rebuilding a weak team doesn't
+                // routinely throw them against elite rosters, while stronger teams face tougher foes.
+                const myOvr = ratingsOf(ensureRoster()).ovr;
+                const minOvr = Math.max(40, Math.round(myOvr * 0.88));
+                const maxOvr = Math.min(99, Math.round(myOvr * 1.18));
+                const ratedOpponents = others.map(i => {
+                    const ovr = ratingsOf(rosterFor(i)).ovr;
+                    return { i, ovr, gap: Math.abs(ovr - myOvr) };
+                });
+                const inBand = shuf(ratedOpponents.filter(x => x.ovr >= minOvr && x.ovr <= maxOvr));
+                // Prefer in-band teams; if the league has fewer than 12, fill remaining slots
+                // with the closest available teams rather than making the schedule unfairly random.
+                const chosen = inBand.slice(0, SEASON_GAMES);
+                if (chosen.length < SEASON_GAMES) {
+                    const used = new Set(chosen.map(x => x.i));
+                    const fill = shuf(ratedOpponents.filter(x => !used.has(x.i))).sort((a,b) => a.gap - b.gap);
+                    chosen.push(...fill.slice(0, SEASON_GAMES - chosen.length));
+                }
+                const opps = chosen.map(x => x.i), homes = shuf(Array.from({ length: SEASON_GAMES }, (_, i) => i < SEASON_GAMES / 2));
                 const sched = opps.map((o, w) => ({ week: w + 1, opp: o, home: homes[w], result: null }));
                 // league games for every week: you vs your opponent, everyone else paired at random (one team sits out each week; 19 teams is an odd number)
                 const byes = {}, met = new Set(); others.forEach(i => { byes[i] = 0; }); const key = (a, b) => a < b ? a + '_' + b : b + '_' + a;
@@ -6053,10 +5986,20 @@ const PXS = (function () {
                     return { games: best.map(([a, b]) => (Math.random() < 0.5 ? { home: a, away: b, played: false } : { home: b, away: a, played: false })), bye };
                 });
                 const stand = {}; for (let i = 0; i < N; i++) stand[i] = { w: 0, l: 0, t: 0, pf: 0, pa: 0 };
-                career.season = { num, week: 0, sched, league, stand };
+                career.season = { num, week: 0, sched, league, stand, balanceVersion: 1 };
                 return career.season;
             }
-            function seasonOf() { return career.season || newSeason(1); }
+            function seasonOf() {
+                if (!career.season) return newSeason(1);
+                const existing = career.season;
+                // Migrate a saved season that has not started yet so the new rating-based
+                // opponent selection takes effect immediately, not only in future seasons.
+                if (existing.balanceVersion !== 1 && existing.week === 0 && Array.isArray(existing.sched) && !existing.sched.some(g => g.result)) {
+                    return newSeason(existing.num || 1);
+                }
+                if (existing.balanceVersion == null) existing.balanceVersion = 1;
+                return existing;
+            }
             function simScore(off, oppDef, home) { const mean = clamp(21 + (off - oppDef) * 0.7 + (home ? 1.5 : 0), 7, 45); const td = Math.max(0, Math.round(mean * 0.75 / 7 + gauss() * 1.15)), fg = Math.max(0, Math.round(0.9 + gauss() * 0.8)); return td * 7 + fg * 3; }
             function simLeagueGame(g) {
                 const H = qpTeams[g.home], A = qpTeams[g.away]; let hs = simScore(H.off, A.def, true), as = simScore(A.off, H.def, false);
