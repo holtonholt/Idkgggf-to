@@ -1685,7 +1685,7 @@
 
         function screenInputToWorldDir(inputX, inputY) {
             let len = Math.sqrt(inputX * inputX + inputY * inputY); if (len < 0.0001) return { x: 0, y: 0, active: false };
-            let ix = inputX / len, iy = inputY / len; let worldDy = iy / camera.pitch; let worldDx = (ix - worldDy * camera.skew) / X_STRETCH;
+            let ix = inputX / len, iy = inputY / len; const _M = camMat(), _det = _M.a * _M.d - _M.b * _M.c; let worldDx = (_M.d * ix - _M.b * iy) / _det, worldDy = (_M.a * iy - _M.c * ix) / _det;
             let wl = Math.sqrt(worldDx * worldDx + worldDy * worldDy) || 1;
             // The camera squashes the field vertically (pitch) and stretches it horizontally (X_STRETCH), so equal
             // WORLD speed looks very uneven ON SCREEN. 'mul' scales world speed so the player looks like they move
@@ -1801,6 +1801,7 @@
 
         // ===== CAMERA MODES (pause menu > SETTINGS) =====
         const CAM_MODES = {
+            behind:    { label: 'MADDEN',    desc: 'Behind your team, looking downfield', z: 0.85, pitch: 0.55, skew: 0.7, lag: 0.12 },
             normal:    { label: 'NORMAL',    desc: 'Classic game view',            z: 1,    pitch: 0.55, skew: 0.7, lag: 0.2 },
             wide:      { label: 'WIDE',      desc: 'See more of the field',        z: 0.6,  pitch: 0.55, skew: 0.7, lag: 0.2 },
             far:       { label: 'FAR',       desc: 'Whole field and the track',    z: 0.2,  pitch: 0.55, skew: 0.7, lag: 0.2 },
@@ -1809,8 +1810,18 @@
             cinematic: { label: 'CINEMATIC', desc: 'Low angle, drift, letterbox',  z: 1.12, pitch: 0.42, skew: 0.3, lag: 0.07 },
             free:      { label: 'FREE CAM',  desc: 'Pan and zoom it yourself',     z: 1,    pitch: 0.55, skew: 0.7, lag: 0.35 }
         };
-        let cameraMode = 'normal';
-        try { const sv = localStorage.getItem('fbCamMode'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
+        let cameraMode = 'behind';
+        // ===== MADDEN-STYLE CAMERA: behind your team, looking downfield (your team always attacks toward x=0) =====
+        const BH = { Hs: 0.9, Vs: 0.7, cy: 0.74 };
+        function behindOn() { return cameraMode === 'behind' && !isMultiplayer && !window._csBgActive; }
+        function camMat() { return behindOn() ? { a: 0, b: -BH.Hs, c: BH.Vs, d: 0 } : { a: X_STRETCH, b: camera.skew, c: 0, d: camera.pitch }; }
+        function camCY() { return canvas.height * (behindOn() ? BH.cy : 0.6); }
+        function camFlatten() { const M = camMat(), A = M.a, B = M.c, C = M.b, D = M.d, det = A * D - B * C; ctx.transform(D / det, -B / det, -C / det, A / det, 0, 0); }
+        function drawBehindBackdrop() {
+            const W = canvas.width, H = canvas.height; ctx.fillStyle = '#0d5219'; ctx.fillRect(0, 0, W, H);
+            const g = ctx.createLinearGradient(0, 0, 0, H * 0.3); g.addColorStop(0, 'rgba(5,8,18,0.75)'); g.addColorStop(1, 'rgba(5,8,18,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * 0.3);
+        }
+        try { const sv = localStorage.getItem('fbCamMode2'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
         const camUnit = () => canvas.height * 0.045;
         const freeCam = { x: 60, y: 0, zoom: 45, hold: {}, drag: null };
         const dyn = { mul: 1, lead: 0, spd: 0, px: 60, py: 0 };
@@ -1869,7 +1880,7 @@
         window.backToPauseMenu = function () { if (gameState === 'PAUSED') showUI(pauseMenuHTML(), 'result-panel'); };
         window.setCameraMode = function (mode) {
             if (!CAM_MODES[mode]) return; cameraMode = mode;
-            try { localStorage.setItem('fbCamMode', mode === 'free' ? 'normal' : mode); } catch (e) {}
+            try { localStorage.setItem('fbCamMode2', mode === 'free' ? 'normal' : mode); } catch (e) {}
             applyCameraMode(true); showCameraSettings();
         };
         (function buildCameraUI() {
@@ -2151,7 +2162,8 @@
         }
 
         function screenToWorldGround(sx, sy) {
-            const renderCenterY = canvas.height * 0.6; let worldDy = (sy - renderCenterY) / (camera.zoom * camera.pitch); let y = camera.currentY + worldDy; let dx = (sx - canvas.width / 2) - (worldDy * camera.zoom * camera.skew); let x = camera.currentX + dx / (camera.zoom * X_STRETCH); return { x, y };
+            const M = camMat(), det = M.a * M.d - M.b * M.c, Z = camera.zoom, px = (sx - canvas.width / 2) / Z, py = (sy - camCY()) / Z;
+            return { x: camera.currentX + (M.d * px - M.b * py) / det, y: camera.currentY + (M.a * py - M.c * px) / det };
         }
 
         function updatePassProjection() {
@@ -2236,8 +2248,8 @@
         function hideUI() { if (isMultiplayer && isMpHost) window._mpPuState = null; uiContainer.style.display = 'none'; uiContainer.innerHTML = ''; hud.innerHTML = ''; }
 
         function toScreen(yardX, yardY) {
-            let dx = (yardX - camera.currentX) * camera.zoom * X_STRETCH; let dy = (yardY - camera.currentY) * camera.zoom;
-            const renderCenterY = canvas.height * 0.6; let screenX = (canvas.width / 2) + dx + (dy * camera.skew) + screenShake.x; let screenY = renderCenterY + (dy * camera.pitch) + screenShake.y;
+            const M = camMat(), Z = camera.zoom, dx = yardX - camera.currentX, dy = yardY - camera.currentY;
+            const screenX = canvas.width / 2 + (M.a * dx + M.b * dy) * Z + screenShake.x, screenY = camCY() + (M.c * dx + M.d * dy) * Z + screenShake.y;
             return { x: (window._mpOverlay ? canvas.width - screenX : screenX), y: screenY };
         }
 
@@ -4621,24 +4633,24 @@ const PXS = (function () {
             window._mpOverlay = false; ctx.imageSmoothingEnabled = false;
             updateMpViewMirror();
             if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0); else ctx.setTransform(1, 0, 0, 1, 0, 0);
-            drawStadium();
+            if (behindOn()) drawBehindBackdrop(); else drawStadium();
 
             ctx.save();
-            const renderCenterY = canvas.height * 0.6;
+            const renderCenterY = camCY();
             ctx.translate(canvas.width / 2 + screenShake.x, renderCenterY + screenShake.y);
-            ctx.scale(X_STRETCH, camera.pitch); ctx.transform(1, 0, camera.skew / X_STRETCH, 1, 0, 0); ctx.translate(-camera.currentX * camera.zoom, -camera.currentY * camera.zoom);
+            { const M = camMat(); ctx.transform(M.a, M.c, M.b, M.d, 0, 0); } ctx.translate(-camera.currentX * camera.zoom, -camera.currentY * camera.zoom);
             const PPY = camera.zoom; const fieldTop = -(FIELD_WIDTH_YARDS / 2) * PPY; const fieldHeight = FIELD_WIDTH_YARDS * PPY;
 
             // surrounding turf / sideline apron: pixel grass + team-area boxes
             if (!sidelineTurf) sidelineTurf = buildSidelineTurf();
-            ctx.imageSmoothingEnabled = false; ctx.drawImage(sidelineTurf, -TURF_XP * PPY, fieldTop - TURF_AP * PPY, (120 + 2 * TURF_XP) * PPY, fieldHeight + 2 * TURF_AP * PPY);
+            ctx.imageSmoothingEnabled = false; if (!behindOn()) ctx.drawImage(sidelineTurf, -TURF_XP * PPY, fieldTop - TURF_AP * PPY, (120 + 2 * TURF_XP) * PPY, fieldHeight + 2 * TURF_AP * PPY);
             // sidewalks, plaza and hillside beyond the track
-            ctx.drawImage(getStadiumGround(stadiumHomeSouth()), -GND_XP * PPY, fieldTop - GND_AP * PPY, (120 + 2 * GND_XP) * PPY, fieldHeight + 2 * GND_AP * PPY);
+            if (!behindOn()) ctx.drawImage(getStadiumGround(stadiumHomeSouth()), -GND_XP * PPY, fieldTop - GND_AP * PPY, (120 + 2 * GND_XP) * PPY, fieldHeight + 2 * GND_AP * PPY);
 
             // the pixel field itself: one canvas pixel = 1/FPX yard, drawn with no smoothing
             { const fc = getFieldCanvasForView(); if (fc) { ctx.imageSmoothingEnabled = false; ctx.drawImage(fc, 0, fieldTop, 120 * PPY, fieldHeight); } else
             { ctx.fillStyle = '#1a6b27'; ctx.fillRect(0, fieldTop, 120 * PPY, fieldHeight); } }
-            if (fieldLogoImg && fieldLogoImg !== true) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
+            if (fieldLogoImg && fieldLogoImg !== true && !behindOn()) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
 
             if (['PRE_SNAP', 'PLAYING', 'TACKLED', 'PLAY_DEAD', 'PENALTY_SEQUENCE'].includes(gameState) && lineOfScrimmage > 0 && !isPAT) {
                 let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(3, PPY * 0.15); ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
@@ -4705,7 +4717,7 @@ const PXS = (function () {
             });
 
             let allEntities = [...players, ...refs];
-            allEntities.sort((a, b) => a.y - b.y);
+            allEntities.sort((a, b) => behindOn() ? a.x - b.x : a.y - b.y);
 
             allEntities.forEach(p => {
                 // Active player highlighting
@@ -4719,7 +4731,7 @@ const PXS = (function () {
                     const spr = getStaRing(Math.ceil(st / 100 * 10), st > 60 ? 0 : st > 30 ? 1 : 2, st < 25 && Math.floor(Date.now() / 140) % 2 === 0);
                     const spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22);   // exactly the player sprites' pixel size
                     const dw = Math.round(spr.width * spx), dh = Math.round(spr.height * spx);
-                    ctx.save(); ctx.translate(p.x * PPY, p.y * PPY); ctx.transform(1, 0, -camera.skew / X_STRETCH, 1, 0, 0); ctx.scale(1 / X_STRETCH, 1 / camera.pitch);   // back to flat screen pixels
+                    ctx.save(); ctx.translate(p.x * PPY, p.y * PPY); camFlatten();   // back to flat screen pixels
                     ctx.imageSmoothingEnabled = spx < 1.6; ctx.drawImage(spr, Math.round(-dw / 2), Math.round(-dh / 2), dw, dh); ctx.restore();
                 }
 
@@ -4769,10 +4781,10 @@ const PXS = (function () {
                 ctx.restore();
             }
 
-            drawGrounds(-1e9, FAR_T);
-            drawStands(-1);
-            drawGrounds(FAR_T, 0);
-            drawSideline(-1);
+            if (!behindOn()) drawGrounds(-1e9, FAR_T);
+            if (!behindOn()) drawStands(-1);
+            if (!behindOn()) drawGrounds(FAR_T, 0);
+            if (!behindOn()) drawSideline(-1);
             allEntities.forEach(p => {
                 let pScreen = toScreen(p.x, p.y); let pScale = camera.zoom * 0.04; 
                 ctx.lineWidth = 3; ctx.strokeStyle = '#000000';
@@ -4895,10 +4907,10 @@ const PXS = (function () {
                 if (_bc && gameState === 'PLAYING') _arrow(_bc, '#facc15');
                 if (_me && _me !== _bc && players.includes(_me)) _arrow(_me, '#38bdf8');
             }
-            drawSideline(1);
-            drawGrounds(0, NEAR_T);
-            drawStands(1);
-            drawGrounds(NEAR_T, 1e9);
+            if (!behindOn()) drawSideline(1);
+            if (!behindOn()) drawGrounds(0, NEAR_T);
+            if (!behindOn()) drawStands(1);
+            if (!behindOn()) drawGrounds(NEAR_T, 1e9);
 
             if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
                 let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06; let visualHeight = ball.z * camera.zoom * 0.6; 
