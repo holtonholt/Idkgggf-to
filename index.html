@@ -1685,7 +1685,7 @@
 
         function screenInputToWorldDir(inputX, inputY) {
             let len = Math.sqrt(inputX * inputX + inputY * inputY); if (len < 0.0001) return { x: 0, y: 0, active: false };
-            let ix = inputX / len, iy = inputY / len; const _M = camMat(), _det = _M.a * _M.d - _M.b * _M.c; let worldDx = (_M.d * ix - _M.b * iy) / _det, worldDy = (_M.a * iy - _M.c * ix) / _det;
+            let ix = inputX / len, iy = inputY / len; let worldDy = iy / camera.pitch; let worldDx = (ix - worldDy * camera.skew) / X_STRETCH;
             let wl = Math.sqrt(worldDx * worldDx + worldDy * worldDy) || 1;
             // The camera squashes the field vertically (pitch) and stretches it horizontally (X_STRETCH), so equal
             // WORLD speed looks very uneven ON SCREEN. 'mul' scales world speed so the player looks like they move
@@ -1801,7 +1801,6 @@
 
         // ===== CAMERA MODES (pause menu > SETTINGS) =====
         const CAM_MODES = {
-            behind:    { label: 'MADDEN',    desc: 'Behind your team, looking downfield', z: 0.85, pitch: 0.55, skew: 0.7, lag: 0.12 },
             normal:    { label: 'NORMAL',    desc: 'Classic game view',            z: 1,    pitch: 0.55, skew: 0.7, lag: 0.2 },
             wide:      { label: 'WIDE',      desc: 'See more of the field',        z: 0.6,  pitch: 0.55, skew: 0.7, lag: 0.2 },
             far:       { label: 'FAR',       desc: 'Whole field and the track',    z: 0.2,  pitch: 0.55, skew: 0.7, lag: 0.2 },
@@ -1810,71 +1809,8 @@
             cinematic: { label: 'CINEMATIC', desc: 'Low angle, drift, letterbox',  z: 1.12, pitch: 0.42, skew: 0.3, lag: 0.07 },
             free:      { label: 'FREE CAM',  desc: 'Pan and zoom it yourself',     z: 1,    pitch: 0.55, skew: 0.7, lag: 0.35 }
         };
-        let cameraMode = 'behind';
-        // ===== MADDEN-STYLE CAMERA: behind your team, looking downfield (your team always attacks toward x=0) =====
-        const BH = { Hs: 0.9, Vs: 0.7, cy: 0.74, B: 22, h: 13 };
-        BH.R = Math.hypot(BH.B, BH.h); BH.c = BH.B / BH.R; BH.s = BH.h / BH.R; BH.tp = BH.h / BH.B;   // camera sits B yds behind you, h yds up, looking down at you
-        let PROJ_Z = null, _crowdPat = null;
-        function persp(x, y, hz) {
-            const F = (PROJ_Z || camera.zoom) * BH.Hs * BH.R, g = (camera.currentX - x) + BH.B, hh = BH.h - (hz || 0);
-            let z = g * BH.c + hh * BH.s; if (z < 1.5) z = 1.5;
-            return { x: canvas.width / 2 + F * (-(y - camera.currentY)) / z + screenShake.x, y: camCY() + F * (hh * BH.c - g * BH.s) / z + screenShake.y, s: Math.min(2.5, BH.R / z) };
-        }
-        function setLocal(x, y) {   // draw world-pixel shapes (x*zoom) at a world spot with the true perspective scale there
-            const Z = camera.zoom, p0 = persp(x, y), p1 = persp(x + 1, y), p2 = persp(x, y + 1);
-            const a = (p1.x - p0.x) / Z, b = (p1.y - p0.y) / Z, c = (p2.x - p0.x) / Z, d = (p2.y - p0.y) / Z;
-            ctx.setTransform(a, b, c, d, p0.x - (a * x + c * y) * Z, p0.y - (b * x + d * y) * Z);
-        }
-        function groundPersp(img, x0, x1, y0, y1) {   // draws a flat ground texture with real perspective, one thin strip per 2 screen rows
-            const W = canvas.width, H = canvas.height, F = camera.zoom * BH.Hs * BH.R, cyS = camCY(), cX = camera.currentX, cY = camera.currentY, RS = 2;
-            const iw = img.width, ih = img.height, top = Math.max(0, Math.ceil(cyS - F * BH.tp) + 1);
-            ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.imageSmoothingEnabled = true;
-            const gAt = sy => { const t = (sy - cyS) / F, den = BH.s + t * BH.c; return { g: BH.h * (BH.c - t * BH.s) / den, z: BH.h / den }; };
-            for (let sy = top; sy < H; sy += RS) {
-                const r = gAt(sy + RS / 2), r2 = gAt(sy + RS * 1.5), wx = cX - (r.g - BH.B), span = Math.abs((cX - (r2.g - BH.B)) - wx);
-                if (wx < x0 || wx > x1) continue;
-                const half = (W / 2) * r.z / F, ya = Math.max(y0, cY - half), yb = Math.min(y1, cY + half); if (yb <= ya) continue;
-                const sw = Math.max(1, span / (x1 - x0) * iw), sxp = Math.min(iw - sw, Math.max(0, (wx - x0) / (x1 - x0) * iw - sw / 2));
-                ctx.drawImage(img, sxp, (ya - y0) / (y1 - y0) * ih, sw, (yb - ya) / (y1 - y0) * ih, (ya - (cY - half)) / (2 * half) * W, sy, (yb - ya) / (2 * half) * W, RS + 0.6);
-            }
-            ctx.restore();
-        }
-        function crowdPat() {
-            if (!_crowdPat) { const c = document.createElement('canvas'); c.width = c.height = 48; const g = c.getContext('2d'); g.fillStyle = '#1f2937'; g.fillRect(0, 0, 48, 48);
-                const cols = ['#dc2626', '#f3f4f6', '#2563eb', '#facc15', '#9ca3af', '#e5e7eb', '#1e3a8a']; let sd = 7; const rn = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-                for (let i = 0; i < 260; i++) { g.fillStyle = cols[(rn() * cols.length) | 0]; g.fillRect((rn() * 46) | 0, (rn() * 46) | 0, 2, 2); }
-                _crowdPat = ctx.createPattern(c, 'repeat'); }
-            return _crowdPat;
-        }
-        function bhQuad(pts, fill) { ctx.beginPath(); pts.forEach((q, i) => { const p = persp(q[0], q[1], q[2]); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
-        function bhStands(endBank) {
-            if (endBank) { bhQuad([[-34, -46, 0], [-34, 46, 0], [-60, 46, 17], [-60, -46, 17]], crowdPat()); bhQuad([[-34, -46, 0], [-34, 46, 0], [-34, 46, 1.4], [-34, -46, 1.4]], '#334155'); return; }
-            const x0 = 8, x1 = Math.min(112, camera.currentX + BH.B - 5); if (x1 <= x0) return;
-            [-1, 1].forEach(sg => { const yi = sg * 54, yo = sg * 74; bhQuad([[x0, yi, 0], [x1, yi, 0], [x1, yo, 15], [x0, yo, 15]], crowdPat()); bhQuad([[x0, yi, 0], [x1, yi, 0], [x1, yi, 1.4], [x0, yi, 1.4]], '#334155'); });
-        }
-        function drawBehindWorld() {
-            const W = canvas.width, H = canvas.height, hor = camCY() - camera.zoom * BH.Hs * BH.R * BH.tp;
-            const sg = ctx.createLinearGradient(0, 0, 0, Math.max(1, hor)); sg.addColorStop(0, '#070b16'); sg.addColorStop(1, '#2b3f6b'); ctx.fillStyle = sg; ctx.fillRect(0, 0, W, Math.max(0, hor));
-            ctx.fillStyle = '#0d5219'; ctx.fillRect(0, Math.max(0, hor), W, H);
-            bhStands(true);
-            if (!sidelineTurf) sidelineTurf = buildSidelineTurf();
-            const hw = FIELD_WIDTH_YARDS / 2;
-            groundPersp(sidelineTurf, -TURF_XP, 120 + TURF_XP, -hw - TURF_AP, hw + TURF_AP);
-            groundPersp(getStadiumGround(stadiumHomeSouth()), -GND_XP, 120 + GND_XP, -hw - GND_AP, hw + GND_AP);
-            const fc = getFieldCanvasForView(); if (fc) groundPersp(fc, 0, 120, -hw, hw);
-            bhStands(false);
-            const fog = ctx.createLinearGradient(0, hor, 0, hor + 90); fog.addColorStop(0, 'rgba(20,32,58,0.55)'); fog.addColorStop(1, 'rgba(20,32,58,0)'); ctx.fillStyle = fog; ctx.fillRect(0, Math.max(0, hor), W, 90);
-        }
-        function gpDraw(x) { const z0 = camera.zoom; PROJ_Z = z0; camera.zoom = z0 * persp(x, 0).s; try { drawGoalpost(x); } finally { camera.zoom = z0; PROJ_Z = null; } }
-        function behindOn() { return cameraMode === 'behind' && !isMultiplayer && !window._csBgActive; }
-        function camMat() { return behindOn() ? { a: 0, b: -BH.Hs, c: BH.Vs, d: 0 } : { a: X_STRETCH, b: camera.skew, c: 0, d: camera.pitch }; }
-        function camCY() { return canvas.height * (behindOn() ? BH.cy : 0.6); }
-        function camFlatten() { const m = ctx.getTransform(), det = m.a * m.d - m.b * m.c; ctx.transform(m.d / det, -m.b / det, -m.c / det, m.a / det, 0, 0); }
-        function drawBehindBackdrop() {
-            const W = canvas.width, H = canvas.height; ctx.fillStyle = '#0d5219'; ctx.fillRect(0, 0, W, H);
-            const g = ctx.createLinearGradient(0, 0, 0, H * 0.3); g.addColorStop(0, 'rgba(5,8,18,0.75)'); g.addColorStop(1, 'rgba(5,8,18,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * 0.3);
-        }
-        try { const sv = localStorage.getItem('fbCamMode2'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
+        let cameraMode = 'normal';
+        try { const sv = localStorage.getItem('fbCamMode'); if (sv && CAM_MODES[sv] && sv !== 'free') cameraMode = sv; } catch (e) {}
         const camUnit = () => canvas.height * 0.045;
         const freeCam = { x: 60, y: 0, zoom: 45, hold: {}, drag: null };
         const dyn = { mul: 1, lead: 0, spd: 0, px: 60, py: 0 };
@@ -1933,7 +1869,7 @@
         window.backToPauseMenu = function () { if (gameState === 'PAUSED') showUI(pauseMenuHTML(), 'result-panel'); };
         window.setCameraMode = function (mode) {
             if (!CAM_MODES[mode]) return; cameraMode = mode;
-            try { localStorage.setItem('fbCamMode2', mode === 'free' ? 'normal' : mode); } catch (e) {}
+            try { localStorage.setItem('fbCamMode', mode === 'free' ? 'normal' : mode); } catch (e) {}
             applyCameraMode(true); showCameraSettings();
         };
         (function buildCameraUI() {
@@ -2215,9 +2151,7 @@
         }
 
         function screenToWorldGround(sx, sy) {
-            if (behindOn()) { const F = camera.zoom * BH.Hs * BH.R, t = (sy - camCY()) / F, den = Math.max(0.03, BH.s + t * BH.c), z = BH.h / den; return { x: camera.currentX - (BH.h * (BH.c - t * BH.s) / den - BH.B), y: camera.currentY - (sx - canvas.width / 2) * z / F }; }
-            const M = camMat(), det = M.a * M.d - M.b * M.c, Z = camera.zoom, px = (sx - canvas.width / 2) / Z, py = (sy - camCY()) / Z;
-            return { x: camera.currentX + (M.d * px - M.b * py) / det, y: camera.currentY + (M.a * py - M.c * px) / det };
+            const renderCenterY = canvas.height * 0.6; let worldDy = (sy - renderCenterY) / (camera.zoom * camera.pitch); let y = camera.currentY + worldDy; let dx = (sx - canvas.width / 2) - (worldDy * camera.zoom * camera.skew); let x = camera.currentX + dx / (camera.zoom * X_STRETCH); return { x, y };
         }
 
         function updatePassProjection() {
@@ -2302,10 +2236,9 @@
         function hideUI() { if (isMultiplayer && isMpHost) window._mpPuState = null; uiContainer.style.display = 'none'; uiContainer.innerHTML = ''; hud.innerHTML = ''; }
 
         function toScreen(yardX, yardY) {
-            if (behindOn()) { const p = persp(yardX, yardY); return { x: (window._mpOverlay ? canvas.width - p.x : p.x), y: p.y, s: p.s }; }
-            const M = camMat(), Z = camera.zoom, dx = yardX - camera.currentX, dy = yardY - camera.currentY;
-            const screenX = canvas.width / 2 + (M.a * dx + M.b * dy) * Z + screenShake.x, screenY = camCY() + (M.c * dx + M.d * dy) * Z + screenShake.y;
-            return { x: (window._mpOverlay ? canvas.width - screenX : screenX), y: screenY, s: 1 };
+            let dx = (yardX - camera.currentX) * camera.zoom * X_STRETCH; let dy = (yardY - camera.currentY) * camera.zoom;
+            const renderCenterY = canvas.height * 0.6; let screenX = (canvas.width / 2) + dx + (dy * camera.skew) + screenShake.x; let screenY = renderCenterY + (dy * camera.pitch) + screenShake.y;
+            return { x: (window._mpOverlay ? canvas.width - screenX : screenX), y: screenY };
         }
 
         function formatClock(sec) { sec = Math.max(0, Math.ceil(sec)); let m = Math.floor(sec / 60); let s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
@@ -4688,29 +4621,28 @@ const PXS = (function () {
             window._mpOverlay = false; ctx.imageSmoothingEnabled = false;
             updateMpViewMirror();
             if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0); else ctx.setTransform(1, 0, 0, 1, 0, 0);
-            if (behindOn()) drawBehindBackdrop(); else drawStadium();
+            drawStadium();
 
             ctx.save();
-            const renderCenterY = camCY();
-            if (behindOn()) ctx.setTransform(1, 0, 0, 1, 0, 0); else {
+            const renderCenterY = canvas.height * 0.6;
             ctx.translate(canvas.width / 2 + screenShake.x, renderCenterY + screenShake.y);
-            { const M = camMat(); ctx.transform(M.a, M.c, M.b, M.d, 0, 0); } ctx.translate(-camera.currentX * camera.zoom, -camera.currentY * camera.zoom); }
-            const PPY = camera.zoom; const fieldTop = -(FIELD_WIDTH_YARDS / 2) * PPY; const fieldHeight = FIELD_WIDTH_YARDS * PPY; if (behindOn()) drawBehindWorld();
+            ctx.scale(X_STRETCH, camera.pitch); ctx.transform(1, 0, camera.skew / X_STRETCH, 1, 0, 0); ctx.translate(-camera.currentX * camera.zoom, -camera.currentY * camera.zoom);
+            const PPY = camera.zoom; const fieldTop = -(FIELD_WIDTH_YARDS / 2) * PPY; const fieldHeight = FIELD_WIDTH_YARDS * PPY;
 
             // surrounding turf / sideline apron: pixel grass + team-area boxes
             if (!sidelineTurf) sidelineTurf = buildSidelineTurf();
-            ctx.imageSmoothingEnabled = false; if (!behindOn()) ctx.drawImage(sidelineTurf, -TURF_XP * PPY, fieldTop - TURF_AP * PPY, (120 + 2 * TURF_XP) * PPY, fieldHeight + 2 * TURF_AP * PPY);
+            ctx.imageSmoothingEnabled = false; ctx.drawImage(sidelineTurf, -TURF_XP * PPY, fieldTop - TURF_AP * PPY, (120 + 2 * TURF_XP) * PPY, fieldHeight + 2 * TURF_AP * PPY);
             // sidewalks, plaza and hillside beyond the track
-            if (!behindOn()) ctx.drawImage(getStadiumGround(stadiumHomeSouth()), -GND_XP * PPY, fieldTop - GND_AP * PPY, (120 + 2 * GND_XP) * PPY, fieldHeight + 2 * GND_AP * PPY);
+            ctx.drawImage(getStadiumGround(stadiumHomeSouth()), -GND_XP * PPY, fieldTop - GND_AP * PPY, (120 + 2 * GND_XP) * PPY, fieldHeight + 2 * GND_AP * PPY);
 
             // the pixel field itself: one canvas pixel = 1/FPX yard, drawn with no smoothing
-            if (!behindOn()) { const fc = getFieldCanvasForView(); if (fc) { ctx.imageSmoothingEnabled = false; ctx.drawImage(fc, 0, fieldTop, 120 * PPY, fieldHeight); } else
+            { const fc = getFieldCanvasForView(); if (fc) { ctx.imageSmoothingEnabled = false; ctx.drawImage(fc, 0, fieldTop, 120 * PPY, fieldHeight); } else
             { ctx.fillStyle = '#1a6b27'; ctx.fillRect(0, fieldTop, 120 * PPY, fieldHeight); } }
-            if (fieldLogoImg && fieldLogoImg !== true && !behindOn()) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
+            if (fieldLogoImg && fieldLogoImg !== true) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
 
             if (['PRE_SNAP', 'PLAYING', 'TACKLED', 'PLAY_DEAD', 'PENALTY_SEQUENCE'].includes(gameState) && lineOfScrimmage > 0 && !isPAT) {
-                if (behindOn()) setLocal(lineOfScrimmage, 0); let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(3, PPY * 0.15); ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
-                if (behindOn()) setLocal(firstDownLine, 0); let ylx = firstDownLine * PPY; ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.beginPath(); ctx.moveTo(ylx, fieldTop); ctx.lineTo(ylx, fieldTop + fieldHeight); ctx.stroke();
+                let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(3, PPY * 0.15); ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
+                let ylx = firstDownLine * PPY; ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.beginPath(); ctx.moveTo(ylx, fieldTop); ctx.lineTo(ylx, fieldTop + fieldHeight); ctx.stroke();
             }
 
             let currentTeamPlay = (offenseDirection === -1) ? selectedPlay : cpuSelectedPlay;
@@ -4727,7 +4659,7 @@ const PXS = (function () {
                 if (isMultiplayer && isMpClient && !isPlayerOffense) routeColor = '#ff003c'; 
 
                 if (drawPlay) {
-                    ctx.save(); if (behindOn()) setLocal(lineOfScrimmage, 0); if (offenseDirection === 1) { ctx.translate(lineOfScrimmage * PPY, 0); ctx.scale(-1, -1); ctx.translate(-lineOfScrimmage * PPY, 0); } // routes are authored for an offense driving toward x=0; turn them around when driving toward x=120
+                    ctx.save(); if (offenseDirection === 1) { ctx.translate(lineOfScrimmage * PPY, 0); ctx.scale(-1, -1); ctx.translate(-lineOfScrimmage * PPY, 0); } // routes are authored for an offense driving toward x=0; turn them around when driving toward x=120
                     if (currentTeamPlay === 'INSIDE_RUN') { let startX = (lineOfScrimmage + 4) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let y = 0 * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.moveTo(endX + arrowSizeX, y - arrowSizeY); ctx.lineTo(endX, y); ctx.lineTo(endX + arrowSizeX, y + arrowSizeY); }, routeColor, PPY); } 
                     else if (currentTeamPlay === 'SWEEP_RIGHT') { let qbX = (lineOfScrimmage + 4) * PPY; let sweepY = -9 * PPY; let turnX = (lineOfScrimmage + 1) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(qbX, 0); ctx.lineTo(turnX, 0); ctx.lineTo(turnX, sweepY); ctx.lineTo(endX, sweepY); ctx.moveTo(endX + arrowSizeX, sweepY - arrowSizeY); ctx.lineTo(endX, sweepY); ctx.lineTo(endX + arrowSizeX, sweepY + arrowSizeY); }, routeColor, PPY); } 
                     else if (currentTeamPlay === 'SWEEP_LEFT') { let qbX = (lineOfScrimmage + 4) * PPY; let sweepY = 9 * PPY; let turnX = (lineOfScrimmage + 1) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(qbX, 0); ctx.lineTo(turnX, 0); ctx.lineTo(turnX, sweepY); ctx.lineTo(endX, sweepY); ctx.moveTo(endX + arrowSizeX, sweepY - arrowSizeY); ctx.lineTo(endX, sweepY); ctx.lineTo(endX + arrowSizeX, sweepY + arrowSizeY); }, routeColor, PPY); } 
@@ -4740,7 +4672,7 @@ const PXS = (function () {
 
             if (isAimingPass || (gameState === 'BALL_IN_AIR' && isPassing)) {
                 let bx = (isAimingPass ? projectedDestX : ball.destX) * PPY; let by = (isAimingPass ? projectedDestY : ball.destY) * PPY;
-                ctx.save(); if (behindOn()) setLocal(isAimingPass ? projectedDestX : ball.destX, isAimingPass ? projectedDestY : ball.destY); let targetColor = isAimingPass ? '#facc15' : '#ef4444'; ctx.fillStyle = targetColor;
+                ctx.save(); let targetColor = isAimingPass ? '#facc15' : '#ef4444'; ctx.fillStyle = targetColor;
                 let pSize = Math.max(4, PPY * 0.3); let offset = PPY * 0.4;
                 for(let i = -2; i <= 2; i++) { ctx.fillRect(bx + i*offset - pSize/2, by + i*offset - pSize/2, pSize, pSize); if (i !== 0) ctx.fillRect(bx + i*offset - pSize/2, by - i*offset - pSize/2, pSize, pSize); }
                 if (gameState === 'BALL_IN_AIR') {
@@ -4773,9 +4705,9 @@ const PXS = (function () {
             });
 
             let allEntities = [...players, ...refs];
-            allEntities.sort((a, b) => behindOn() ? a.x - b.x : a.y - b.y);
+            allEntities.sort((a, b) => a.y - b.y);
 
-            allEntities.forEach(p => { if (behindOn()) { ctx.save(); setLocal(p.x, p.y); }
+            allEntities.forEach(p => {
                 // Active player highlighting
                 let isActivePlayerForClient = false;
                 if (!isMultiplayer && p === player) isActivePlayerForClient = true;
@@ -4787,7 +4719,7 @@ const PXS = (function () {
                     const spr = getStaRing(Math.ceil(st / 100 * 10), st > 60 ? 0 : st > 30 ? 1 : 2, st < 25 && Math.floor(Date.now() / 140) % 2 === 0);
                     const spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22);   // exactly the player sprites' pixel size
                     const dw = Math.round(spr.width * spx), dh = Math.round(spr.height * spx);
-                    ctx.save(); ctx.translate(p.x * PPY, p.y * PPY); camFlatten();   // back to flat screen pixels
+                    ctx.save(); ctx.translate(p.x * PPY, p.y * PPY); ctx.transform(1, 0, -camera.skew / X_STRETCH, 1, 0, 0); ctx.scale(1 / X_STRETCH, 1 / camera.pitch);   // back to flat screen pixels
                     ctx.imageSmoothingEnabled = spx < 1.6; ctx.drawImage(spr, Math.round(-dw / 2), Math.round(-dh / 2), dw, dh); ctx.restore();
                 }
 
@@ -4801,12 +4733,12 @@ const PXS = (function () {
                 if (p.isDiving && p.diveTimer < 20) shadowSize -= Math.sin((p.diveTimer / 20) * Math.PI) * (PPY * 0.45);
                 else if (p.isLunging) { let lt = Math.min(1, (p.lungeTimer || 0) / 12); shadowSize -= Math.sin(lt * Math.PI) * (PPY * 0.3); } 
                 else if (p.hasBall && gameState === 'TACKLED') { let t = Math.min(1, (p.tackleTimer || 0) / 15); shadowSize -= Math.sin(t * Math.PI) * (PPY * 0.3); }
-                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x * PPY, p.y * PPY, Math.max(0, shadowSize) / X_STRETCH, Math.max(0, shadowSize), 0, 0, Math.PI * 2); ctx.fill(); if (behindOn()) ctx.restore();
+                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x * PPY, p.y * PPY, Math.max(0, shadowSize) / X_STRETCH, Math.max(0, shadowSize), 0, 0, Math.PI * 2); ctx.fill();
             });
             
             if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
                 let ballShadowSize = PPY * 0.4; if (ball.z > 0) ballShadowSize = Math.max(PPY * 0.1, PPY * 0.4 - (ball.z * 0.08));
-                if (behindOn()) setLocal(ball.x, ball.y); ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(ball.x * PPY, ball.y * PPY, ballShadowSize / X_STRETCH, ballShadowSize, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(ball.x * PPY, ball.y * PPY, ballShadowSize / X_STRETCH, ballShadowSize, 0, 0, Math.PI * 2); ctx.fill();
             }
             ctx.restore(); 
 
@@ -4823,7 +4755,7 @@ const PXS = (function () {
                 ctx.stroke(); ctx.setLineDash([]); ctx.restore();
             }
 
-            if (behindOn()) { if (camera.currentX < 80) gpDraw(0); } else { if (camera.currentX > 70) drawGoalpost(120); if (camera.currentX < 50) drawGoalpost(0); }   
+            if (camera.currentX > 70) drawGoalpost(120); if (camera.currentX < 50) drawGoalpost(0);   
 
             if (headset.active && !headset.pickedUp) {
                 let hScreen = toScreen(headset.x, headset.y); let p = camera.zoom * 0.035; 
@@ -4837,11 +4769,12 @@ const PXS = (function () {
                 ctx.restore();
             }
 
-            if (!behindOn()) drawGrounds(-1e9, FAR_T);
-            if (!behindOn()) drawStands(-1);
-            if (!behindOn()) drawGrounds(FAR_T, 0);
-            if (!behindOn()) drawSideline(-1);
-            allEntities.forEach(p => { const _z0 = camera.zoom; try { let pScreen = toScreen(p.x, p.y); if (behindOn()) { PROJ_Z = _z0; camera.zoom = _z0 * pScreen.s; } let pScale = camera.zoom * 0.04; 
+            drawGrounds(-1e9, FAR_T);
+            drawStands(-1);
+            drawGrounds(FAR_T, 0);
+            drawSideline(-1);
+            allEntities.forEach(p => {
+                let pScreen = toScreen(p.x, p.y); let pScale = camera.zoom * 0.04; 
                 ctx.lineWidth = 3; ctx.strokeStyle = '#000000';
                 
                 ctx.save(); ctx.translate(Math.round(pScreen.x), Math.round(pScreen.y - (p.hopOffset ? p.hopOffset * camera.zoom * 0.6 : 0))); ctx.scale(p.facing, 1); 
@@ -4948,26 +4881,27 @@ const PXS = (function () {
                 ctx.imageSmoothingEnabled = spx < 1.6;
                 let spriteTop = Math.round(3 * pScale + (-diveHeight + (plantPose ? 0 : groundDrop)) * pScale - PXS.GROUND * spx);
                 ctx.drawImage(spriteCanvas, Math.round(-PXS.HX * spx), spriteTop, Math.round(PXS.W * spx), Math.round(PXS.H * spx));
-                ctx.restore(); } finally { camera.zoom = _z0; PROJ_Z = null; } });
+                ctx.restore();
+            });
             // ---- clarity markers, drawn on top of every sprite: YELLOW arrow = ball carrier, BLUE arrow = YOU ----
             if (!isIntroScene && ['PRE_SNAP', 'PLAYING', 'BALL_IN_AIR', 'BALL_LOOSE'].includes(gameState)) {
                 const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22), _bob = Math.sin(Date.now() / 140) * _spx * 1.4;
                 const _me = (!isMultiplayer || isMpHost) ? player : (isMpClient ? p2Player : null), _bc = players.find(q => q.hasBall);
                 const _arrow = (q, fill) => {
-                    const sc = toScreen(q.x, q.y), _k = sc.s || 1, w = Math.max(3, _spx * _k * 3.0), hg = w * 1.15, tipY = -19.5 * _spx * _k + _bob;
+                    const sc = toScreen(q.x, q.y), w = Math.max(3, _spx * 3.0), hg = w * 1.15, tipY = -19.5 * _spx + _bob;
                     ctx.save(); ctx.translate(Math.round(sc.x), Math.round(sc.y)); ctx.fillStyle = fill; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1.5, _spx * 0.8); ctx.lineJoin = 'round';
                     ctx.beginPath(); ctx.moveTo(-w, tipY - hg); ctx.lineTo(w, tipY - hg); ctx.lineTo(0, tipY); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
                 };
                 if (_bc && gameState === 'PLAYING') _arrow(_bc, '#facc15');
                 if (_me && _me !== _bc && players.includes(_me)) _arrow(_me, '#38bdf8');
             }
-            if (!behindOn()) drawSideline(1);
-            if (!behindOn()) drawGrounds(0, NEAR_T);
-            if (!behindOn()) drawStands(1);
-            if (!behindOn()) drawGrounds(NEAR_T, 1e9);
+            drawSideline(1);
+            drawGrounds(0, NEAR_T);
+            drawStands(1);
+            drawGrounds(NEAR_T, 1e9);
 
             if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
-                let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06 * (bScreen.s || 1); let visualHeight = ball.z * camera.zoom * 0.6 * (bScreen.s || 1); 
+                let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06; let visualHeight = ball.z * camera.zoom * 0.6; 
                 ctx.save(); ctx.translate(bScreen.x, bScreen.y - visualHeight);
                 
                 let isSpiralPass = (gameState === 'BALL_IN_AIR' && (isPassing || ball.isKicked));
