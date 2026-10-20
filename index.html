@@ -982,7 +982,7 @@
             // --- mowing stripes (every 5 yards) with a mid-stripe shade for depth ---
             for (let yd = 10; yd < 110; yd += 5) {
                 const alt = ((yd - 10) / 5) % 2 === 0;
-                R(yx(yd), 0, 5 * FPXX, PH, alt ? '#2b9d41' : '#1d7a30');
+                R(yx(yd), 0, 5 * FPXX, PH, alt ? '#2f9b44' : '#238236');
             }
             // --- clean grass: a few sparse, same-size pixels (retro style), no blades ---
             for (let i = 0; i < PW * PH * 0.035; i++) {
@@ -3582,7 +3582,7 @@ const PXS = (function () {
     const pm = new Uint32Array(W * H);
     let bx0 = 99, by0 = 99, bx1 = -1, by1 = -1;
     function pack(r, g, b) { return ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0; }
-    const OUT = pack(18, 22, 34);
+    const OUT = pack(14, 30, 26);
     function hex2rgb(h) {
         if (typeof h !== 'string') return [128, 128, 128];
         h = h.trim();
@@ -3593,16 +3593,24 @@ const PXS = (function () {
     const toneCache = {};
     function tones(hex) {
         let t = toneCache[hex]; if (t) return t;
-        let [r, g, b] = hex2rgb(hex);
-        // ambient field light: every colour picks up a touch of the grass green so players sit IN the field, not on top of it
-        r = Math.round(r * .95 + 88 * .05); g = Math.round(g * .95 + 140 * .05); b = Math.round(b * .95 + 78 * .05);
-        t = { b: pack(r, g, b), d: pack(Math.round(r * .68), Math.round(g * .72), Math.round(b * .80)),
-              h: pack(Math.min(255, Math.round(r + (255 - r) * .30)), Math.min(255, Math.round(g + (255 - g) * .28)), Math.min(255, Math.round(b + (255 - b) * .20))) };
+        const [r, g, b] = hex2rgb(hex);
+        // Field-matched grade: pull colours slightly toward the warm afternoon light on the turf,
+        // calm over-saturation, and push shadows toward a deep green-teal (like shade on grass)
+        // instead of flat black, so players sit in the scene instead of floating on top of it.
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), lum = 0.3 * r + 0.59 * g + 0.11 * b;
+        const neutral = (mx - mn) < 28;                       // whites/greys/blacks stay clean
+        const sat = neutral ? 1 : 0.92;
+        let r1 = lum + (r - lum) * sat, g1 = lum + (g - lum) * sat, b1 = lum + (b - lum) * sat;
+        const sun = neutral ? 0.05 : 0.07;                     // warm sunlight tint
+        r1 = r1 + (255 - r1) * sun * 0.9; g1 = g1 + (240 - g1) * sun; b1 = b1 + (200 - b1) * sun;
+        if (lum < 40) { r1 += 6; g1 += 9; b1 += 12; }         // lift crushed blacks so they aren't holes
+        const cl = v => Math.max(0, Math.min(255, Math.round(v)));
+        const sh = [26, 74, 52], shA = 0.14;                   // grass-shade bounce
+        const dr = r1 * .68 + (sh[0] - r1 * .68) * shA, dg = g1 * .70 + (sh[1] - g1 * .70) * shA, db = b1 * .80 + (sh[2] - b1 * .80) * shA;
+        t = { b: pack(cl(r1), cl(g1), cl(b1)), d: pack(cl(dr), cl(dg), cl(db)) };
         toneCache[hex] = t; return t;
     }
     function dimC(c, f) { return pack(Math.round((c & 255) * f), Math.round(((c >> 8) & 255) * f), Math.round(((c >> 16) & 255) * f)); }
-    function liteC(c, f) { return pack(Math.min(255, Math.round((c & 255) * f + 5)), Math.min(255, Math.round(((c >> 8) & 255) * f + 5)), Math.min(255, Math.round(((c >> 16) & 255) * f + 4))); }
-    function packA(r, g, b, a) { return ((a << 24) | (b << 16) | (g << 8) | r) >>> 0; }
     function put(x, y, c) {
         if (x < 0 || y < 0 || x >= W || y >= H) return;
         pm[y * W + x] = c;
@@ -3624,9 +3632,7 @@ const PXS = (function () {
         for (let y = mny; y <= mxy; y++) for (let x = mnx; x <= mxx; x++) {
             const px = x + .5, py = y + .5; let t = ((px - x0) * dx + (py - y0) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
             const ox = px - (x0 + dx * t), oy = py - (y0 + dy * t); if (ox * ox + oy * oy > r * r) continue;
-            let col = band ? band(t, c) : c;
-            if (r >= 0.8) { const s = (ox * 0.5 - oy * 0.85) / r; if (s > 0.55) col = liteC(col, 1.17); else if (s < -0.5) col = dimC(col, 0.82); }   // light from upper-front: rounded limbs
-            put(x, y, col);
+            put(x, y, band ? band(t, c) : c);
         }
     }
     function shape(hx, hy, th, fn) {
@@ -3638,9 +3644,9 @@ const PXS = (function () {
         }
     }
     // helmet 7x6 (facing right): H helmet, T stripe, S skin, k skin shade, e eye, M facemask, E ear, s helmet shade
-    const HELM = ['.HTTh..', 'HHTThH.', 'HHHHHeM', 'HHHEHSM', '.sHHMMM', '..ss...'];
-    const HEADREF = ['.ChCC..', 'CCCCCCB', '.SSSS..', '.SSeS..', '..kk...', '.......'];
-    const HEADSET = ['.ChCC..', 'CCCCCCB', '.SSSS..', 'ESSeS..', '.EkkM..', '.......'];
+    const HELM = ['.HTTH..', 'HHTTHH.', 'HHHHHeM', 'HHHEHSM', '.sHHMMM', '..ss...'];
+    const HEADREF = ['.CCCC..', 'CCCCCCB', '.SSSS..', '.SSeS..', '..kk...', '.......'];
+    const HEADSET = ['.CCCC..', 'CCCCCCB', '.SSSS..', 'ESSeS..', '.EkkM..', '.......'];
     const hw = [2.6, 2.9, 2.5, 2.4, 2.3, 2.3]; // torso rows -5..0
     const spriteCache = new Map();
     function cached(o) {
@@ -3668,20 +3674,20 @@ const PXS = (function () {
         const cu = Math.cos(th), su = Math.sin(th), cp = Math.cos(pitch), sp = Math.sin(pitch);
         const U = (lx, ly) => [hx + lx * cu - ly * su, uy + lx * su + ly * cu];
         const P = (lx, ly) => [hx + lx * cp - ly * sp, hy + lx * sp + ly * cp];
-        const isRef = !!o.isRef; const BLK = tones('#111827'), WHT = tones('#ffffff'), CLEAT = tones('#273041');
+        const isRef = !!o.isRef; const BLK = tones('#111827'), WHT = tones('#ffffff'), CLEAT = tones('#2a3440');
         function arm(angle, bend, dim) {
             const [sx, sy] = U(0.3, -4.1); const A = angle + th, B = A - bend; const L1 = 2.5, L2 = 2.3;
             const ex = sx - Math.sin(A) * L1, ey = sy + Math.cos(A) * L1, hx2 = ex - Math.sin(B) * L2, hy2 = ey + Math.cos(B) * L2; const r1 = 0.95 + (g - 1) * 0.5;
             if (isRef) { capsule(sx, sy, ex, ey, r1, WHT.b); capsule(ex, ey, hx2, hy2, 0.85, WHT.b, (t, c) => t > .45 && t < .75 ? BLK.b : c); }
-            else { capsule(sx, sy, ex, ey, r1, TJ.d, (t, c) => t > .72 ? TD.b : c); capsule(ex, ey, hx2, hy2, 0.85, TS.b, (t, c) => (t > .55 && t < .85) ? pack(236, 240, 246) : c); }
+            else { capsule(sx, sy, ex, ey, r1, TJ.d); capsule(ex, ey, hx2, hy2, 0.85, TS.b); }
             capsule(hx2, hy2, hx2, hy2, 0.8, TS.b);
             flush(dim); return { ex, ey, hx: hx2, hy: hy2, A, B };
         }
         function leg(hipOff, angle, knee, dim) {
             const [hx0, hy0] = P(hipOff, 0.2); const A = angle + pitch, B = A + knee; const L1 = 2.7, L2 = 2.5;
             const kx = hx0 - Math.sin(A) * L1, ky = hy0 + Math.cos(A) * L1, ax = kx - Math.sin(B) * L2, ay = ky + Math.cos(B) * L2; const r1 = 1.25 + (g - 1) * 0.8, r2 = 1.0 + (g - 1) * 0.4;
-            capsule(hx0, hy0, kx, ky, r1, TP.b, (t, c) => t > .8 ? TP.d : c);
-            capsule(kx, ky, ax, ay, r2, TP.b, (t, c) => (t > .5 ? (isRef ? WHT.b : TPS.b) : (t < .2 ? TP.d : c)));
+            capsule(hx0, hy0, kx, ky, r1, TP.b, null);
+            capsule(kx, ky, ax, ay, r2, TP.b, (t, c) => (t > .55 ? (isRef ? WHT.b : TPS.b) : c));
             const fx = Math.cos(B), fy = Math.sin(B);
             capsule(ax - fx * .2, ay + .3 - fy * .2, ax + fx * 1.5, ay + .4 + fy * 1.5, 0.8, CLEAT.b);
             flush(dim); return { ax, ay };
@@ -3692,19 +3698,16 @@ const PXS = (function () {
         shape(hx, uy, th, (lx, ly) => {
             const row = Math.floor(ly); if (row < -5 || row > 0) return 0; const w = hw[row + 5] * gx; const d = lx - 0.2; if (Math.abs(d) > w) return 0;
             if (row === 0) return TP.b;
-            if (row === -1) return isRef ? pack(27, 32, 48) : TP.d;
-            if (!isRef && row === -5) return d > -w * 0.15 ? TJ.h : TJ.b;          // shoulder pads catch the light
+            if (row === -1) return pack(27, 32, 48);
             if (isRef) { let c = (Math.floor(d + 5) % 2 === 0) ? BLK.b : WHT.b; if (o.hasFlag && lx > 1 && lx < 2.6 && row === -2) c = pack(234, 179, 8); return c; }
             if (row === -3) return TD.b;
             if (d < -w * .45) return TJ.d;
-            if (row === -4 && d > w * .4) return TJ.h;
-            if (row === -2 && d < w * .1) return TJ.d;
             return TJ.b;
         });
         flush(0);
         // head
         const map = o.headset ? HEADSET : ((isRef || o.bare) ? HEADREF : HELM);
-        const pal = { H: TH.b, h: TH.h, s: TH.d, T: TST.b, S: TS.b, k: TS.d, e: pack(20, 20, 28), M: pack(203, 213, 225), E: pack(15, 23, 42), C: TH.b, B: TH.d };
+        const pal = { H: TH.b, s: TH.d, T: TST.b, S: TS.b, k: TS.d, e: pack(20, 20, 28), M: pack(203, 213, 225), E: pack(15, 23, 42), C: TH.b, B: TH.d };
         shape(hx, uy, th, (lx, ly) => { const col = Math.floor(lx + 3), row = Math.floor(ly + 11); if (row < 0 || row > 5 || col < 0 || col > 6) return 0; const ch = map[row][col]; return ch === '.' ? 0 : (pal[ch] || 0); });
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
@@ -3739,32 +3742,8 @@ const PXS = (function () {
             const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15);
             drawBall(bx, by, ang, Math.max(0.7, Math.min(1.5, o.ballScale || 1)));
         }
-        finish(buf);
         cx.putImageData(img, 0, 0);
         return cv;
-    }
-
-    // finishing pass: (1) grass bounce-light on the lower body, (2) a soft outline coloured from the pixel next to it
-    // and blended with dark field-green, so sprites read clearly but melt into the turf instead of having a hard black edge
-    function finish(b) {
-        const lo = GROUND - 5;
-        for (let y = lo; y < H; y++) { const f = Math.min(1, (y - lo + 1) / 5) * 0.16; if (f <= 0) continue;
-            for (let x = 0; x < W; x++) { const i = y * W + x, c = b[i]; if ((c >>> 24) !== 255) continue;
-                const r = c & 255, g = (c >> 8) & 255, bl = (c >> 16) & 255;
-                b[i] = pack(Math.round(r + (62 - r) * f), Math.round(g + (150 - g) * f), Math.round(bl + (64 - bl) * f)); } }
-        const idx = [], cols = [];
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-            const i = y * W + x; if (b[i] >>> 24) continue;
-            let n = 0;
-            if (y < H - 1 && (b[i + W] >>> 24) === 255) n = b[i + W];
-            else if (x > 0 && (b[i - 1] >>> 24) === 255) n = b[i - 1];
-            else if (x < W - 1 && (b[i + 1] >>> 24) === 255) n = b[i + 1];
-            else if (y > 0 && (b[i - W] >>> 24) === 255) n = b[i - W];
-            if (!n) continue;
-            const r = n & 255, g = (n >> 8) & 255, bl = (n >> 16) & 255;
-            idx.push(i); cols.push(packA(Math.round(r * .22 + 9 * .55), Math.round(g * .22 + 34 * .55 + 6), Math.round(bl * .22 + 16 * .55), 205));
-        }
-        for (let k = 0; k < idx.length; k++) b[idx[k]] = cols[k];
     }
 
     // ---- stance / idle pose library (gives every player a different look) ----
@@ -4437,6 +4416,98 @@ const PXS = (function () {
             ctx.fill(); ctx.restore();
         }
 
+        // ===== PIXEL ROUTE ART: play routes painted on the turf =====
+        // Palette pulled from the field: warm sunlit gold (like the first-down line) on a deep turf-green outline.
+        const ROUTE_PAL = { out: '#0a2a17', shade: '#c98a14', fill: '#f7d04a', hi: '#fff3b6', shadow: 'rgba(4,28,12,0.38)' };
+        let _routeCanvas = null, _routeKey = '';
+        // where every eligible receiver / the runner goes, in yards, computed from the real route code the players run
+        function computeRoutePaths(play) {
+            const L = lineOfScrimmage, dir = offenseDirection, out = [];
+            const off = players.filter(p => (offenseDirection === -1) ? !p.isCPU : p.isCPU);
+            const clampY = y => Math.max(-FIELD_WIDTH_YARDS / 2 + 1, Math.min(FIELD_WIDTH_YARDS / 2 - 1, y));
+            if (isPassPlay(play)) {
+                off.forEach(p => {
+                    if (!p.slot || p.slot === 'QB' || p.slot === 'OL') return;
+                    const kind = routeKind(p.slot, play); if (kind === 'block') return;
+                    const side = p.routeSide || (p.y < 0 ? -1 : 1), f = p.facing || (-dir), sp = 0.25;
+                    let x = p.x, y = p.y; const pts = [[x, y]];
+                    const cap = { go: 24, post: 24, seam: 24, slant: 17, out: 14, flat: 15, curl: 10 }[kind] || 20;
+                    for (let i = 0; i < 700; i++) {
+                        const dist = Math.abs(x - L); const d = routeDelta(kind, x, y, f, sp, dist, side);
+                        if (Math.abs(d[0]) + Math.abs(d[1]) < 0.012) break;
+                        x += d[0]; y += d[1]; pts.push([x, clampY(y)]);
+                        if (Math.abs(x - L) >= cap || Math.abs(y) >= FIELD_WIDTH_YARDS / 2 - 2 || (kind === 'out' && Math.abs(y) >= 22)) break;
+                    }
+                    if (kind === 'curl') { const e = pts[pts.length - 1]; pts.push([e[0] - f * 2.6, e[1] - side * 1.4]); }  // the hook back toward the QB
+                    if (pts.length > 2) out.push(pts);
+                });
+            } else {
+                const rb = off.find(p => p.slot === 'RB') || { x: L - dir * 4.6, y: 0 };
+                const X = a => L - dir * a, Y = y => y * (-dir), y0 = rb.y;
+                if (play === 'INSIDE_RUN') out.push([[rb.x, y0], [X(0.5), y0 * 0.5], [X(-6), 0]]);
+                else if (play === 'SWEEP_RIGHT' || play === 'SWEEP_LEFT') { const sy = Y(play === 'SWEEP_RIGHT' ? -9 : 9); out.push([[rb.x, y0], [X(1.5), y0 + (sy - y0) * 0.45], [X(-1.5), sy], [X(-7), sy]]); }
+            }
+            return out;
+        }
+        function getRouteLayer(play) {
+            const paths = computeRoutePaths(play); if (!paths.length) return null;
+            const phase = Math.floor(performance.now() / 110) % 8;
+            const key = play + '|' + offenseDirection + '|' + lineOfScrimmage + '|' + phase + '|' + paths.map(q => q.length + ':' + Math.round(q[0][0] * 4) + ',' + Math.round(q[0][1] * 4) + ',' + Math.round(q[q.length - 1][0] * 4) + ',' + Math.round(q[q.length - 1][1] * 4)).join(';');
+            if (_routeCanvas && key === _routeKey) return _routeCanvas;
+            const PW = Math.round(FIELD_LENGTH_YARDS * FPXX), PH = Math.round(FIELD_WIDTH_YARDS * FPXY);
+            if (!_routeCanvas) { _routeCanvas = document.createElement('canvas'); _routeCanvas.width = PW; _routeCanvas.height = PH; }
+            const g = _routeCanvas.getContext('2d'); g.clearRect(0, 0, PW, PH); g.imageSmoothingEnabled = false;
+            const solid = new Map();   // pixel -> colour
+            const setPx = (x, y, c, force) => { if (x < 0 || y < 0 || x >= PW || y >= PH) return; const k = y * PW + x; if (force || !solid.has(k)) solid.set(k, c); };
+            const toPx = (xy) => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY];
+            paths.forEach(path => {
+                const pp = path.map(toPx), walk = [];
+                for (let i = 1; i < pp.length; i++) {
+                    const [x0, y0] = pp[i - 1], [x1, y1] = pp[i], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2));
+                    for (let j = (i === 1 ? 0 : 1); j <= n; j++) walk.push([x0 + (x1 - x0) * j / n, y0 + (y1 - y0) * j / n]);
+                }
+                if (walk.length < 4) return;
+                // 2px-thick chalk body: bright top row, darker bottom row (bevel), with a marching highlight showing the direction of the run
+                const body = new Map();
+                walk.forEach((w, i) => {
+                    const bx = Math.round(w[0] - 0.5), by = Math.round(w[1] - 0.5);
+                    [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([dx, dy]) => {
+                        const k = (by + dy) * PW + (bx + dx); const cur = body.get(k);
+                        const top = dy === 0; if (!cur || (cur.shade && top)) body.set(k, { x: bx + dx, y: by + dy, i, shade: !top });
+                    });
+                });
+                body.forEach(v => {
+                    let c = v.shade ? ROUTE_PAL.shade : ROUTE_PAL.fill;
+                    if (!v.shade && ((Math.floor(v.i / 3) - phase + 64) % 8) < 2) c = ROUTE_PAL.hi;
+                    setPx(v.x, v.y, c, true);
+                });
+                // starting nub (a little paint dot where the player lines up)
+                const [sx, sy] = [Math.round(walk[0][0]), Math.round(walk[0][1])];
+                for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) setPx(sx + dx, sy + dy, (dx === 0 && dy === 0) ? ROUTE_PAL.hi : (dy === 1 ? ROUTE_PAL.shade : ROUTE_PAL.fill), true);
+                // blocky arrowhead on the end of the route
+                const n = walk.length, e = walk[n - 1], b0 = walk[Math.max(0, n - 9)];
+                let dx = e[0] - b0[0], dy = e[1] - b0[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                const tx = e[0] + dx * 3.2, ty = e[1] + dy * 3.2, px = -dy, py = dx, HL = 7.5;
+                for (let yy = Math.floor(ty - HL - 2); yy <= Math.ceil(ty + HL + 2); yy++) for (let xx = Math.floor(tx - HL - 2); xx <= Math.ceil(tx + HL + 2); xx++) {
+                    const qx = xx + 0.5 - tx, qy = yy + 0.5 - ty, u = -(qx * dx + qy * dy), v = qx * px + qy * py;
+                    if (u < -0.2 || u > HL || Math.abs(v) > 0.3 + u * 0.62) continue;
+                    const cu = u - HL * 0.45, light = (qx * 0.45 + qy * 0.9);
+                    let c = ROUTE_PAL.fill; if (Math.abs(v) < 0.8 && u < HL * 0.6) c = ROUTE_PAL.hi; else if (light > 1.6 + (cu < 0 ? 0 : 0.4)) c = ROUTE_PAL.shade;
+                    setPx(xx, yy, c, true);
+                }
+            });
+            // outline (4-neighbour, deep turf green) and a soft drop shadow so the paint feels pressed into the grass
+            const outline = new Set();
+            solid.forEach((c, k) => { const x = k % PW, y = (k - x) / PW; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ax, ay]) => { const nx = x + ax, ny = y + ay; if (nx < 0 || ny < 0 || nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk)) outline.add(nk); }); });
+            const shadow = new Set();
+            const sh = k => { const x = k % PW, y = (k - x) / PW, nx = x + 1, ny = y + 1; if (nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk) && !outline.has(nk)) shadow.add(nk); };
+            solid.forEach((c, k) => sh(k)); outline.forEach(k => sh(k));
+            g.fillStyle = ROUTE_PAL.shadow; shadow.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
+            g.fillStyle = ROUTE_PAL.out; outline.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
+            solid.forEach((c, k) => { const x = k % PW; g.fillStyle = c; g.fillRect(x, (k - x) / PW, 1, 1); });
+            _routeKey = key; return _routeCanvas;
+        }
+
         function drawPlayRoute(pathBuilderFn, color, PPY) {
             let baseW = Math.max(4, PPY * 0.2); ctx.lineCap = 'square'; ctx.lineJoin = 'miter'; ctx.setLineDash([]);
             ctx.lineWidth = baseW + Math.max(4, PPY * 0.2); ctx.strokeStyle = '#000000'; ctx.beginPath(); pathBuilderFn(); ctx.stroke();
@@ -4877,14 +4948,10 @@ const PXS = (function () {
                 if (isMultiplayer && isMpClient && !isPlayerOffense) routeColor = '#ff003c'; 
 
                 if (drawPlay) {
-                    ctx.save(); if (offenseDirection === 1) { ctx.translate(lineOfScrimmage * PPY, 0); ctx.scale(-1, -1); ctx.translate(-lineOfScrimmage * PPY, 0); } // routes are authored for an offense driving toward x=0; turn them around when driving toward x=120
-                    if (currentTeamPlay === 'INSIDE_RUN') { let startX = (lineOfScrimmage + 4) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let y = 0 * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.moveTo(endX + arrowSizeX, y - arrowSizeY); ctx.lineTo(endX, y); ctx.lineTo(endX + arrowSizeX, y + arrowSizeY); }, routeColor, PPY); } 
-                    else if (currentTeamPlay === 'SWEEP_RIGHT') { let qbX = (lineOfScrimmage + 4) * PPY; let sweepY = -9 * PPY; let turnX = (lineOfScrimmage + 1) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(qbX, 0); ctx.lineTo(turnX, 0); ctx.lineTo(turnX, sweepY); ctx.lineTo(endX, sweepY); ctx.moveTo(endX + arrowSizeX, sweepY - arrowSizeY); ctx.lineTo(endX, sweepY); ctx.lineTo(endX + arrowSizeX, sweepY + arrowSizeY); }, routeColor, PPY); } 
-                    else if (currentTeamPlay === 'SWEEP_LEFT') { let qbX = (lineOfScrimmage + 4) * PPY; let sweepY = 9 * PPY; let turnX = (lineOfScrimmage + 1) * PPY; let endX = (lineOfScrimmage - 5) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { ctx.moveTo(qbX, 0); ctx.lineTo(turnX, 0); ctx.lineTo(turnX, sweepY); ctx.lineTo(endX, sweepY); ctx.moveTo(endX + arrowSizeX, sweepY - arrowSizeY); ctx.lineTo(endX, sweepY); ctx.lineTo(endX + arrowSizeX, sweepY + arrowSizeY); }, routeColor, PPY); } 
-                    else if (currentTeamPlay === 'FLY') { let endX = (lineOfScrimmage - 20) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { [-14, 14].forEach(wrY => { let startX = lineOfScrimmage * PPY; let y = wrY * PPY; ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.moveTo(endX + arrowSizeX, y - arrowSizeY); ctx.lineTo(endX, y); ctx.lineTo(endX + arrowSizeX, y + arrowSizeY); }); }, routeColor, PPY); } 
-                    else if (currentTeamPlay === 'DOUBLE_SLANT') { let breakX = (lineOfScrimmage - 5) * PPY; let endX = (lineOfScrimmage - 12) * PPY; let arrowSizeX = (1.5 * PPY) / X_STRETCH; let arrowSizeY = 1.0 * PPY; drawPlayRoute(() => { [-14, 14].forEach(wrY => { let startX = lineOfScrimmage * PPY; let startY = wrY * PPY; let slantDir = wrY < 0 ? 1 : -1; let endY = startY + (slantDir * 7 * PPY); ctx.moveTo(startX, startY); ctx.lineTo(breakX, startY); ctx.lineTo(endX, endY); ctx.moveTo(endX + arrowSizeX, endY - arrowSizeY); ctx.lineTo(endX, endY); ctx.lineTo(endX + arrowSizeX, endY + arrowSizeY); }); }, routeColor, PPY); } 
-                    else if (currentTeamPlay === 'OUTS') { let break1X = (lineOfScrimmage - 5) * PPY; let break2X = (lineOfScrimmage - 6.5) * PPY; let startWrY = 9; drawPlayRoute(() => { [-startWrY, startWrY].forEach(wrY => { let startX = lineOfScrimmage * PPY; let startY = wrY * PPY; let outDir = wrY < 0 ? -1 : 1; let break2Y = outDir * 22 * PPY; ctx.moveTo(startX, startY); ctx.lineTo(break1X, startY); ctx.lineTo(break2X, break2Y); if (outDir < 0) { ctx.moveTo(break2X + (1.5*PPY), break2Y + (1.5*PPY)); ctx.lineTo(break2X, break2Y); ctx.lineTo(break2X - (1.5*PPY), break2Y + (1.5*PPY)); } else { ctx.moveTo(break2X + (1.5*PPY), break2Y - (1.5*PPY)); ctx.lineTo(break2X, break2Y); ctx.lineTo(break2X - (1.5*PPY), break2Y - (1.5*PPY)); } }); }, routeColor, PPY); }
-                    ctx.restore();
+                    // Routes are painted INTO the field's own pixel grid (same pixel size as the turf), so they read as
+                    // chalk/paint on the grass and sit underneath every player sprite drawn afterwards.
+                    const rl = getRouteLayer(currentTeamPlay);
+                    if (rl) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.97; ctx.drawImage(rl, 0, fieldTop, 120 * PPY, fieldHeight); ctx.restore(); }
                 }
             }
 
@@ -4981,12 +5048,12 @@ const PXS = (function () {
                 else if (p.isLunging) { let lt = Math.min(1, (p.lungeTimer || 0) / 12); shadowSize -= Math.sin(lt * Math.PI) * (PPY * 0.3); } 
                 else if (p.hasBall && gameState === 'TACKLED') { let t = Math.min(1, (p.tackleTimer || 0) / 15); shadowSize -= Math.sin(t * Math.PI) * (PPY * 0.3); }
                 shadowSize *= p.isRef ? refSizeScale : playerSizeScale;
-                if (shadowSize > 0) drawPixelShadow(p.x, p.y, shadowSize / X_STRETCH, shadowSize, PPY, 'rgba(4,32,12,0.40)');
+                if (shadowSize > 0) drawPixelShadow(p.x, p.y, shadowSize / X_STRETCH, shadowSize, PPY, 'rgba(0,0,0,0.32)');
             });
             
             if (gameState !== 'COIN_TOSS' && (!players.some(p => p.hasBall) || players.some(p => p.snapT > 0)) && gameState !== 'PENALTY_SEQUENCE') {
                 let ballShadowSize = PPY * 0.4 * ballSizeScale; if (ball.z > 0) ballShadowSize = Math.max(PPY * 0.1, PPY * 0.4 * ballSizeScale - (ball.z * 0.08));
-                drawPixelShadow(ball.x, ball.y, ballShadowSize / X_STRETCH, ballShadowSize, PPY, 'rgba(4,32,12,0.40)');
+                drawPixelShadow(ball.x, ball.y, ballShadowSize / X_STRETCH, ballShadowSize, PPY, 'rgba(0,0,0,0.32)');
             }
             ctx.restore(); 
 
@@ -5052,7 +5119,7 @@ const PXS = (function () {
                     cJerseyDetail = p.isCPU ? '#9ca3af' : '#3b82f6'; cHelmetStripe = p.isCPU ? '#9ca3af' : '#ffffff'; cPantsStripe = p.isCPU ? '#9ca3af' : '#ffffff';
                 }
                 
-                let armAngle1 = swing * (Math.PI / 2.8); let armAngle2 = -swing * (Math.PI / 2.8); let legAngle1 = -swing * (Math.PI / 3.3); let legAngle2 = swing * (Math.PI / 3.3);   // arms swing OPPOSITE the same-side leg, like a real stride
+                let armAngle1 = -swing * (Math.PI / 3.5); let armAngle2 = swing * (Math.PI / 3.5); let legAngle1 = -swing * (Math.PI / 3.5); let legAngle2 = swing * (Math.PI / 3.5);
                 let isTackledCarrier = (p.hasBall && gameState === 'TACKLED'); let isReaching = false; let distToBall = Math.hypot(p.x - ball.x, p.y - ball.y);
                 if ((gameState === 'BALL_IN_AIR' || gameState === 'BALL_LOOSE') && !p.hasBall && !p.isBlocking && !p.isDiving && !p.isTackling && !p.isLunging && !p.isMissedTackle && !p.isRef) { if (p.isTargetReceiver || p.isIntercepter || distToBall < 3.0) { if (distToBall < 5.0 && ball.z < 6.0) isReaching = true; } }
 
@@ -5108,7 +5175,7 @@ const PXS = (function () {
                 if (p.pxSeed === undefined) p.pxSeed = Math.random();
                 let plantPose = false; let aB1 = 0.35, aB2 = 0.35, kn1 = 0.08, kn2 = 0.08, leanA = 0, bobPx = 0, breathPx = 0;
                 let pitchQ = Math.round(divePitch / (Math.PI / 24)) * (Math.PI / 24);
-                const runLegs = () => { kn1 = 0.1 + 1.7 * Math.max(0, cosT); kn2 = 0.1 + 1.7 * Math.max(0, -cosT); };
+                const runLegs = () => { kn1 = 1.5 * Math.max(0, cosT); kn2 = 1.5 * Math.max(0, -cosT); };
                 if (p.isDiving) { aB1 = aB2 = 0.08; kn1 = 0.35; kn2 = 0.55; }
                 else if (isTackledCarrier && tcp) { aB1 = tcp.b1; aB2 = tcp.b2; kn1 = tcp.k1; kn2 = tcp.k2; }
                 else if (p.isTackling) { aB1 = aB2 = 0.35; kn1 = 0.6; kn2 = 0.3; leanA = 0.1; }
@@ -5118,7 +5185,7 @@ const PXS = (function () {
                 else if (p.isBlocking) { aB1 = aB2 = 1.0; kn1 = kn2 = 0.6; leanA = 0.12; }
                 else if (isStancePose) { let st = PXS.stance(p, p.pxSeed); armAngle1 = st.armA1; armAngle2 = st.armA2; legAngle1 = st.legA1; legAngle2 = st.legA2; aB1 = st.armB1; aB2 = st.armB2; kn1 = st.legK1; kn2 = st.legK2; pitchQ = st.pitch; leanA = 0; plantPose = true; }
                 else if (refSignal) { aB1 = aB2 = 0.15; kn1 = kn2 = 0; }
-                else if (isMovingNow) { aB1 = 1.2 - 0.32 * swing; aB2 = 1.2 + 0.32 * swing; runLegs(); leanA = 0.2; bobPx = Math.round(Math.abs(Math.sin(tAnim)) * 1.4); }   // elbows tighten as each arm drives forward
+                else if (isMovingNow) { aB1 = aB2 = 1.15; runLegs(); leanA = 0.14; bobPx = Math.round(Math.abs(Math.sin(tAnim)) * 1.2); }
                 else { let id = PXS.idle(p.pxSeed); armAngle1 = id.armA1; armAngle2 = id.armA2; legAngle1 = id.legA1; legAngle2 = id.legA2; aB1 = id.armB1; aB2 = id.armB2; kn1 = id.legK1; kn2 = id.legK2; plantPose = true; breathPx = (Math.floor(Date.now() / 520 + p.pxSeed * 9) % 2 === 0) ? 0 : 1; }
                 let frontArmA = armAngle2, frontArmB = aB2;
                 if (p.hasBall && !(p.snapT > 0) && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else if (isTackledCarrier && tcp) { frontArmA = tcp.fa; frontArmB = tcp.fb; } else { frontArmA = 0.3; frontArmB = 2.3; } }
