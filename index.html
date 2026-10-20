@@ -1929,30 +1929,80 @@
         }
 
 
+        // ===== FIELD GOAL / PAT LINE BATTLE =====
+        // The kicking team's line and the rushing line pair off and actually fight (shoving, shuffling, small give and take)
+        // from the snap until the kick is away. Rushers with nobody to block run at the kick and jump at it.
+        const FG_LIVE_STATES = ['KICK_POWER', 'KICK_DIR', 'KICKER_RUN_UP', 'BALL_IN_AIR'];
+        function updateKickLine() {
+            const live = isFieldGoalPlay && FG_LIVE_STATES.includes(gameState) && !(isMultiplayer && isMpClient);
+            if (!live) { players.forEach(p => { if (p._fgLine) { p._fgLine = false; p.isBlocking = false; p.blockTarget = null; p.hopOffset = 0; } p._fgInit = false; p._fgRole = null; p._fgPair = null; p._fgHop = 0; }); return; }
+            const dir = offenseDirection, kickCPU = dir === 1;
+            if (!players.some(p => p._fgInit)) {
+                // first live frame of this kick: classify the two lines and pair them up by position
+                players.forEach(p => { p._fgInit = true; p._fgRole = null; p._fgPair = null; });
+                const offL = players.filter(p => p !== player && p.isCPU === kickCPU && !p.isKicker && Math.abs(p.x - lineOfScrimmage) < 2.2 && Math.abs(p.y) <= 16).sort((a, b) => a.y - b.y);
+                const defL = players.filter(p => p !== player && p.isCPU !== kickCPU && Math.abs(p.x - (lineOfScrimmage + dir * 2)) < 2.2 && Math.abs(p.y) <= 16);
+                offL.forEach(o => { o._fgRole = 'OL'; });
+                defL.forEach(d => { d._fgRole = 'DL'; });
+                offL.forEach(o => {
+                    let best = null, bd = 4.5; defL.forEach(d => { if (!d._fgPair) { const dd = Math.abs(d.y - o.y); if (dd < bd) { bd = dd; best = d; } } });
+                    if (best) { const pr = { o, d: best, y0: (o.y + best.y) / 2, x0: (o.x + best.x) / 2, ph: Math.random() * 6.28, t: 0 }; o._fgPair = pr; best._fgPair = pr; }
+                });
+            }
+            const kicker = players.find(p => p.isKicker);
+            const kx = kicker ? kicker.x : ball.x;
+            players.forEach(p => {
+                if (p === player || !p._fgRole) return;
+                p._fgLine = true;
+                const pr = p._fgPair;
+                if (pr) {
+                    if (p !== pr.o) return;                                   // each pair is advanced once per frame (by its blocker)
+                    pr.t++; const o = pr.o, d = pr.d;
+                    const drift = Math.sin(pr.t * 0.045 + pr.ph) * 0.4 - 0.12;   // the rusher wins a little ground, the blocker wins it back
+                    const xc = pr.x0 + dir * drift;
+                    const ty = pr.y0 + Math.sin(pr.t * 0.21 + pr.ph) * 0.24;
+                    const mv = (q, tx, ty2, face, mate) => { q.x += (tx - q.x) * 0.2; q.y += (ty2 - q.y) * 0.2; q.isBlocking = true; q.blockTarget = mate; q.facing = face; q.animTimer = 0; q.blockTimer = (q.blockTimer || 0) + 1; };
+                    mv(o, xc - dir * 0.5, ty, dir, d); mv(d, xc + dir * 0.5, ty + 0.18, -dir, o);
+                    if (Math.random() < 0.03) spawnDust(xc, ty);
+                } else if (p._fgRole === 'DL' && (gameState === 'KICKER_RUN_UP' || gameState === 'BALL_IN_AIR')) {
+                    // nobody to block: charge at the kick, stopping short of the kicker, then leap at the ball
+                    const tx = kx + dir * 1.6, dx = tx - p.x, dy = (kicker ? kicker.y : 0) - p.y, dist = Math.hypot(dx, dy);
+                    p.isBlocking = false; p.blockTarget = null;
+                    if (dist > 0.6) { const sp = p.speed * 0.9; p.x += dx / dist * sp; p.y += dy / dist * sp; p.facing = dx > 0 ? 1 : -1; p.animTimer += 0.3; }
+                    if (gameState === 'BALL_IN_AIR' && dist < 5) { p._fgHop = (p._fgHop || 0) + 1; p.hopOffset = Math.sin(Math.min(1, p._fgHop / 22) * Math.PI) * 0.5; }
+                }
+            });
+        }
+
         // ===== CPU offense brain =====
         let lastCpuPlay = null;
         let _frameTick = 0;   // counts update() frames
         let handoffState = null; // { qb, rb, t } while the QB is still carrying the ball on a run play
+        const _cpuPlayHist = [];   // last few CPU calls, so it mixes things up instead of repeating
         function pickCpuPlay() {
             const dist = Math.max(1, Math.abs(firstDownLine - lineOfScrimmage));
             const toGoal = 110 - lineOfScrimmage;
-            const w = { INSIDE_RUN: 3, SWEEP_RIGHT: 2, SWEEP_LEFT: 2, FLY: 1.5, DOUBLE_SLANT: 2.5, OUTS: 2.5, SEAM: 1.6, CURL_FLAT: 2.2 };
-            const run = k => { w.INSIDE_RUN *= k; w.SWEEP_RIGHT *= k; w.SWEEP_LEFT *= k; };
-            const pass = k => { w.FLY *= k; w.DOUBLE_SLANT *= k; w.OUTS *= k; w.SEAM *= k; w.CURL_FLAT *= k; };
-            if (dist >= 8) { pass(1.9); run(0.6); }
-            else if (dist >= 5) { pass(1.3); }
-            else if (dist <= 3) { run(1.8); pass(0.8); w.FLY *= 0.5; w.SEAM *= 0.6; }
-            if (down === 3 && dist >= 5) { pass(1.8); w.OUTS *= 1.2; }
-            if (down === 3 && dist <= 2) w.INSIDE_RUN *= 2;
-            if (down === 4) { pass(1.2); }
-            if (toGoal <= 12) { w.FLY *= 0.2; w.SEAM *= 0.8; w.INSIDE_RUN *= 1.5; w.DOUBLE_SLANT *= 1.3; }
-            if (toGoal >= 85) { w.FLY *= 1.2; }
-            const lateGame = (quarter >= 4 && gameClock < 240) || quarter > 4;
-            if (lateGame && cpuScore < playerScore) { pass(1.7); run(0.6); }
-            else if (lateGame && cpuScore > playerScore) { run(1.7); pass(0.6); }
-            if (lastCpuPlay && w[lastCpuPlay] !== undefined) w[lastCpuPlay] *= 0.35; // don't call the same play over and over
+            // 1) run or pass, by down and distance:
+            //    1st down: 70% run / 30% pass     2nd down: 50 / 50
+            //    3rd (and 4th) down: more than 5 yds to go = 80% pass; 5 yds or less = 80% run
+            let passChance;
+            if (down === 1) passChance = 0.30;
+            else if (down === 2) passChance = 0.50;
+            else passChance = dist > 5 ? 0.80 : 0.20;
+            const isPass = Math.random() < passChance;
+            // 2) which play inside that type: weighted by the situation, and recent calls are discouraged so it varies
+            const w = isPass
+                ? { FLY: 1.5, DOUBLE_SLANT: 2.5, OUTS: 2.5, SEAM: 1.6, CURL_FLAT: 2.2 }
+                : { INSIDE_RUN: 3, SWEEP_RIGHT: 2.2, SWEEP_LEFT: 2.2 };
+            if (isPass) {
+                if (dist >= 8) { w.FLY *= 1.8; w.SEAM *= 1.6; w.OUTS *= 1.3; w.CURL_FLAT *= 0.6; }
+                else if (dist <= 4) { w.FLY *= 0.4; w.SEAM *= 0.6; w.DOUBLE_SLANT *= 1.5; w.CURL_FLAT *= 1.4; }
+                if (toGoal <= 12) { w.FLY *= 0.15; w.SEAM *= 0.6; }
+            } else if (dist <= 3 || toGoal <= 5) w.INSIDE_RUN *= 2;
+            _cpuPlayHist.forEach((pl, i) => { if (w[pl] !== undefined) w[pl] *= (i === _cpuPlayHist.length - 1 ? 0.25 : 0.6); });
             const keys = Object.keys(w); let total = keys.reduce((a, k) => a + w[k], 0), r = Math.random() * total, pick = keys[0];
             for (const k of keys) { r -= w[k]; if (r <= 0) { pick = k; break; } }
+            _cpuPlayHist.push(pick); if (_cpuPlayHist.length > 2) _cpuPlayHist.shift();
             lastCpuPlay = pick; return pick;
         }
         // QB reads his receivers like a person: waits for someone to get open, takes a beat to react, throws early under pressure
@@ -3240,8 +3290,10 @@
                 _frameTick++; updateHandoff();
                 if (isAimingPass && qbPastLOS(player)) { isAimingPass = false; aimPointerId = null; } // crossed the line mid-aim: drop the trajectory
 
+                updateKickLine();
                 players.forEach(p => { let isOffense = (offenseDirection === -1) ? !p.isCPU : p.isCPU; p.runningRoute = isOffense && !p.isLineman && !p.isQB && !p.isReturner && !p.hasBall && isPassPlay(currentOffensePlay) && gameState === 'PLAYING' && !carrierPastLOS && routeKind(p.slot, currentOffensePlay) !== 'block'; });
                 players.forEach(p => {
+                    if (p._fgLine) return;   // field goal line battle moves these players (see updateKickLine)
                     let isDefending = false;
                     if (!isPassing && ['BALL_IN_AIR', 'BALL_LOOSE', 'KICKER_RUN_UP', 'PRE_KICK'].includes(gameState)) isDefending = (playState === 'RECEIVE' && p.isCPU) || (playState === 'KICK' && !p.isCPU); else isDefending = (p.isCPU && offenseDirection === -1) || (!p.isCPU && offenseDirection === 1);
                     let runningRoute = p.runningRoute;
@@ -3321,11 +3373,30 @@
                                     }
                                 }
                                 if (carrier.hasBall && gameState === 'PLAYING' && targetX === carrier.x && targetY === carrier.y) { const _dC = Math.hypot(targetX - p.x, targetY - p.y); const _tF = Math.min(16, _dC / Math.max(0.05, p.speed * 0.95)) * (p.isCPU ? (0.35 + 0.3 * Math.max(0, cpuDifficulty)) : 0.6); targetX += _carVel.x * _tF; targetY += _carVel.y * _tF; }
+                                p._kMul = 1;
+                                if (isKickReturnPlay && !isPassing && !p.isReturner && !p.isKicker && !p.isMissedTackle && !p.isLunging) {
+                                    // COVERAGE UNIT: every man owns a lane across the field and runs it downfield, the two outside men
+                                    // keep the edge (contain), and only closes in on the returner as he gets near. They also keep their distance
+                                    // from each other, so the unit fans out and tackles in waves instead of balling up around the ball.
+                                    const mates = players.filter(q => q.isCPU === p.isCPU && !q.isReturner && !q.isKicker && !q.isRef).sort((a, b) => (a.y - b.y) || (a.x - b.x));
+                                    const n = Math.max(1, mates.length), idx = Math.max(0, mates.indexOf(p));
+                                    if (p._kOff === undefined) { p._kOff = (Math.random() - 0.5) * 2.2; p._kSpd = 0.93 + Math.random() * 0.07; p._kLate = Math.random() < 0.25; }
+                                    const span = FIELD_WIDTH_YARDS - 8, laneY = -span / 2 + (idx + 0.5) * span / n + p._kOff;
+                                    const dC = Math.hypot(carrier.x - p.x, carrier.y - p.y), outer = (idx === 0 || idx === n - 1), side = idx === 0 ? -1 : 1;
+                                    let conv = outer ? Math.max(0, Math.min(1, (10 - dC) / 6)) : Math.max(0, Math.min(1, ((p._kLate ? 17 : 27) - dC) / 18));
+                                    if (Math.abs(carrier.x - p.x) < 2.5) conv = 1;                       // already level with him: just get him
+                                    let ty = laneY + ((outer ? carrier.y + side * 1.3 : carrier.y) - laneY) * conv, tx = carrier.x;
+                                    if (carrier.hasBall && conv > 0.4) { const lead = Math.min(14, dC / Math.max(0.05, p.speed)) * 0.4; tx += _carVel.x * lead; ty += _carVel.y * lead; }
+                                    targetX = tx; targetY = Math.max(-FIELD_WIDTH_YARDS / 2 + 1, Math.min(FIELD_WIDTH_YARDS / 2 - 1, ty));
+                                    let kx = 0, ky = 0; mates.forEach(q => { if (q !== p) { const ddx = p.x - q.x, ddy = p.y - q.y, dd = Math.hypot(ddx, ddy); if (dd > 0.01 && dd < 3.4) { const f = (3.4 - dd) / 3.4; kx += ddx / dd * f; ky += ddy / dd * f; } } });
+                                    const dT = Math.hypot(targetX - p.x, targetY - p.y) || 1; sepX = kx * dT * 0.55 * (1 - conv * 0.6); sepY = ky * dT * 0.55 * (1 - conv * 0.6);
+                                    p._kMul = p._kSpd;
+                                }
                                 if (p.isMissedTackle) { p.missedTackleTimer = (p.missedTackleTimer || 0) + 1; p.animTimer = 0; if (p.missedTackleTimer > 32) { p.isMissedTackle = false; p.missedTackleTimer = 0; } } 
                                 else if (p.isLunging) { p.lungeTimer = (p.lungeTimer || 0) + 1; { const lm = 0.14 * worldDirSpeedMul(p.lungeDirX, p.lungeDirY); p.x += p.lungeDirX * lm; p.y += p.lungeDirY * lm; } p.animTimer = 0; let lungeDist = Math.sqrt(Math.pow(carrier.x - p.x, 2) + Math.pow(carrier.y - p.y, 2)); if (touching(p, carrier) && gameState === 'PLAYING' && carrier.hasBall) triggerTackle(carrier, p); else if (p.lungeTimer > 12) { p.isLunging = false; p.isMissedTackle = true; p.missedTackleTimer = 0; } } 
                                 else {
                                     let dx = targetX - p.x + sepX; let dy = targetY - p.y + sepY; let dist = Math.sqrt(dx*dx + dy*dy);
-                                    if (dist > 0.5 && !p.isIntercepter) { const cm = p.speed * (p.isCPU ? 0.97 + 0.04 * Math.max(0, cpuDifficulty) : 0.98) * worldDirSpeedMul(dx, dy); p.x += (dx / dist) * cm; p.y += (dy / dist) * cm; p.facing = dx > 0 ? 1 : -1; p.animTimer += 0.3; }
+                                    if (dist > 0.5 && !p.isIntercepter) { const cm = p.speed * (p.isCPU ? 0.97 + 0.04 * Math.max(0, cpuDifficulty) : 0.98) * (p._kMul || 1) * worldDirSpeedMul(dx, dy); p.x += (dx / dist) * cm; p.y += (dy / dist) * cm; p.facing = dx > 0 ? 1 : -1; p.animTimer += 0.3; }
                                     let actualDistToCarrier = Math.sqrt(Math.pow(carrier.x - p.x, 2) + Math.pow(carrier.y - p.y, 2));
                                     const touchNow = touching(p, carrier); if (touchNow && gameState === 'PLAYING' && carrier.hasBall) triggerTackle(carrier, p);
                                     else if (!touchNow && visDist(p, carrier) < 2.4 && gameState === 'PLAYING' && carrier.hasBall && Math.random() < Math.max(0.05, 0.08 + (p.isCPU ? cpuDifficulty : -cpuDifficulty * 0.3) * 0.06)) { let ldx = carrier.x - p.x, ldy = carrier.y - p.y; let llen = Math.sqrt(ldx * ldx + ldy * ldy) || 1; p.isLunging = true; p.lungeTimer = 0; p.lungeDirX = ldx / llen; p.lungeDirY = ldy / llen; p.facing = ldx > 0 ? 1 : -1; }
@@ -3495,6 +3566,7 @@
             }
             cameraModeUpdate();
             if (cameraMode !== 'free' && !isIntroScene) camera.y = camYFollow(camera.target ? camera.target.y : 0);
+            if ((isFieldGoalPlay || isPAT) && !isIntroScene) camera.y = Math.max(-3, Math.min(3, camera.y * 0.25));   // field goals: stay near the middle of the field, don't swing out past the sideline / track
             updateScoreboard();
         }
 
@@ -4296,7 +4368,7 @@ const PXS = (function () {
             const S = (y, h) => { const q = toScreen(yardX, y); return { x: Math.round(q.x), y: Math.round(q.y) - h }; };
             const base = S(0, 0), stemTop = S(0, barH), farBar = S(-GY, barH), nearBar = S(GY, barH);
             const farTop = S(-GY, barH + upH), nearTop = S(GY, barH + upH);
-            const OUT = '#6b3a0a', Y = '#eab308', HI = '#fde047', SH = '#a16207', w = u * 2;
+            const OUT = '#b7791f', Y = '#fde047', HI = '#fef9c3', SH = '#facc15', w = u * 3;
             // a pole is a chain of u-sized blocks along a line: outline pass, body pass, shade + highlight
             const pole = (a, b) => {
                 const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / u));
@@ -5050,13 +5122,17 @@ const PXS = (function () {
                 let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06 * ballSizeScale; let visualHeight = ball.z * camera.zoom * 0.6; 
                 ctx.save(); ctx.translate(Math.round(bScreen.x), Math.round(bScreen.y - visualHeight));
                 
-                let isSpiralPass = (gameState === 'BALL_IN_AIR' && (isPassing || ball.isKicked));
+                let isKickTumble = (gameState === 'BALL_IN_AIR' && ball.isKicked && !isPassing);   // kickoffs, punts, field goals, PATs
+                let isSpiralPass = (gameState === 'BALL_IN_AIR' && isPassing);
                 if (isSpiralPass) {
                     let p1 = toScreen(ball.x, ball.y); p1.y -= ball.z * camera.zoom * 0.6;
                     let p2 = toScreen(ball.x + ball.vx, ball.y + ball.vy); p2.y -= (ball.z + ball.vz) * camera.zoom * 0.6;
                     let travelAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
                     if (travelAngle > Math.PI / 2 || travelAngle < -Math.PI / 2) { ctx.rotate(travelAngle + Math.PI); ctx.scale(-1, 1); } else ctx.rotate(travelAngle);
                     ball.spinAngle = (ball.spinAngle || 0) + (isPassing ? 1 : 0.5); 
+                } else if (isKickTumble) {
+                    // a kicked ball flips end over end (forward flip toward where it is travelling), it does not spiral
+                    ball.tumble = (ball.tumble || 0) + 0.24 * (ball.vx >= 0 ? 1 : -1); ctx.rotate(ball.tumble);
                 } else if (gameState === 'BALL_IN_AIR') ctx.rotate(ball.x * 0.5);
                 else { const sq = players.find(p => p.snapT > 0); if (sq) ctx.rotate((1 - sq.snapT / sq.snapDur) * Math.PI * 2 * (offenseDirection === -1 ? -1 : 1)); }
                 
