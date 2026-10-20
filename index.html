@@ -1335,7 +1335,7 @@
                     r(p.hopOffset), r(p.diveTimer), p.tackleAnimTimer || 0, p.tackleTimer || 0, r(p.hitDirX), r(p.hitDirY),
                     // team + role flags ride in EVERY packet so a dropped/stale roster can never leave a player in the wrong team colors
                     (p.isCPU ? 1 : 0) | (p.isKicker ? 2 : 0) | (p.isLineman ? 4 : 0) | (p.isQB ? 8 : 0) | (p.isReturner ? 16 : 0) | (p.isMLB ? 32 : 0),
-                    Math.max(0, SKIN_TONES.indexOf(p.skinTone)), r(p.girth)
+                    Math.max(0, SKIN_TONES.indexOf(p.skinTone)), r(p.girth), (p.tkDive != null ? p.tkDive : -1)
                 ]),
                 refs: refs.map(f => [r(f.x), r(f.y), f.facing, r(f.animTimer), f.state, b(f.hasFlag), f.id])
             };
@@ -1519,7 +1519,7 @@
                 p.isDiving = !!(f & 1); p.isTackling = !!(f & 2); p.isLunging = !!(f & 4); p.isMissedTackle = !!(f & 8);
                 p.hasBall = !!(f & 16) && !(window._mpPredBall && p === p2Player); p.isBlocking = !!(f & 32); p.isTargetReceiver = !!(f & 64); p.isIntercepter = !!(f & 128);
                 p.hopOffset = d[5]; p.diveTimer = d[6]; p.tackleAnimTimer = d[7]; p.tackleTimer = d[8];
-                p.hitDirX = d[9]; p.hitDirY = d[10];
+                p.hitDirX = d[9]; p.hitDirY = d[10]; p.tkDive = (d.length > 14 && d[14] != null) ? d[14] : -1;
             }
 
             if (refs.length !== data.refs.length) refs = data.refs.map(dr => createRef(dr[0], dr[1], dr[6]));
@@ -1795,11 +1795,22 @@
             if (['PLAYING', 'TOUCHDOWN_CELEBRATION', 'BALL_IN_AIR'].includes(gameState) && Math.random() < 0.1) { stadiumFlashes.push({ x: Math.random() * canvas.width, y: Math.random() * (canvas.height * 0.3), life: 5, maxLife: 5, size: 2 + Math.random() * 4 }); }
         }
 
+        // How a tackle plays out depends on HOW the carrier was hit (relative to the way he is running):
+        //   DIVE  = he was already diving, so he keeps flying/sliding and the tacklers pile on
+        //   FRONT = hit head-on, driven backwards, falls on his back
+        //   BACK  = hit from behind, pitched forward into a face-plant slide
+        //   SIDE  = hit from the side, buckles and crumples, shoved across the field
+        function tackleStyle(p) {
+            if (p.tkDive != null && p.tkDive >= 0) return 'DIVE';
+            const along = (p.hitDirX || 0) * (p.facing || 1);   // + = shoved the way he faces (hit from behind)
+            if (along < -0.45) return 'FRONT'; if (along > 0.45) return 'BACK'; return 'SIDE';
+        }
+        function diveSpeedAt(k) { return k < 20 ? 0.25 * (1 - k / 20) : (k < 45 ? 0.10 * (1 - (k - 20) / 25) : 0); }
         function triggerTackle(carrier, hitter) {
-            if (gameState !== 'PLAYING') return; if (StatsBridge.tackleMiss(carrier, hitter)) return; gameState = 'TACKLED'; isAimingPass = false; aimPointerId = null; carrier.tackleTimer = 0; carrier.isDiving = false; carrier.hitDirX = carrier.x - hitter.x; carrier.hitDirY = carrier.y - hitter.y;
+            if (gameState !== 'PLAYING') return; if (StatsBridge.tackleMiss(carrier, hitter)) return; gameState = 'TACKLED'; isAimingPass = false; aimPointerId = null; carrier.tackleTimer = 0; carrier.tkDive = carrier.isDiving ? Math.max(0, carrier.diveTimer || 0) : -1; carrier.isDiving = false; carrier.hitDirX = carrier.x - hitter.x; carrier.hitDirY = carrier.y - hitter.y;
             let hLen = Math.sqrt(carrier.hitDirX * carrier.hitDirX + carrier.hitDirY * carrier.hitDirY) || 1; carrier.hitDirX /= hLen; carrier.hitDirY /= hLen;
             let gangTacklers = players.filter(pl => pl !== hitter && pl !== carrier && pl.isCPU !== carrier.isCPU && Math.sqrt(Math.pow(pl.x - carrier.x, 2) + Math.pow(pl.y - carrier.y, 2)) < 1.6);
-            [hitter, ...gangTacklers].forEach(t => { let dx = carrier.x - t.x, dy = carrier.y - t.y; let len = Math.sqrt(dx * dx + dy * dy) || 1; t.tackleHitDirX = dx / len; t.tackleHitDirY = dy / len; t.isTackling = true; t.tackleAnimTimer = 0; t.isLunging = false; t.isMissedTackle = false; t.isDiving = false; });
+            [hitter, ...gangTacklers].forEach(t => { let dx = carrier.x - t.x, dy = carrier.y - t.y; let len = Math.sqrt(dx * dx + dy * dy) || 1; t.tackleHitDirX = dx / len; t.tackleHitDirY = dy / len; if (Math.abs(dx) > 0.05) t.facing = dx > 0 ? 1 : -1; t.isTackling = true; t.tackleAnimTimer = 0; t.isLunging = false; t.isMissedTackle = false; t.isDiving = false; });
             let gangCount = gangTacklers.length; spawnImpactBurst(carrier.x, carrier.y, 15 + gangCount * 8); addScreenShake(0.6 + gangCount * 0.2); hitStopTimer = Math.min(15, 6 + gangCount * 3);
             setTimeout(() => { endPlay("TACKLED!"); }, 1200);
         }
@@ -3416,7 +3427,19 @@
                 if (gameState === 'TACKLED' && ballCarrier) {
                     ballCarrier.tackleTimer = (ballCarrier.tackleTimer || 0) + 1; let tt = ballCarrier.tackleTimer;
                     if (isIntroScene && introScriptState === 'SCRIPTED_TACKLE') { if (ballCarrier.x > 81.2) ballCarrier.x = 81.2; if (ballCarrier.x < 80.8) ballCarrier.x = 80.8; }
-                    if (tt < 18) { let decay = Math.pow(1 - tt / 18, 1.6); let knockSpeed = 0.20 * decay; ballCarrier.x += ballCarrier.hitDirX * knockSpeed; ballCarrier.y += ballCarrier.hitDirY * knockSpeed; if (tt < 8) ballCarrier.x += ballCarrier.facing * 0.02 * (1 - tt / 8); if(Math.random() < 0.5) spawnDust(ballCarrier.x, ballCarrier.y); }
+                    {
+                        const st = tackleStyle(ballCarrier);
+                        if (st === 'DIVE') {
+                            // the dive is NOT cancelled: he keeps skidding the way he was going, with the hit shoving him a little
+                            const k = (ballCarrier.tkDive || 0) + tt, sp = diveSpeedAt(k) * worldDirSpeedMul(ballCarrier.diveDirX, ballCarrier.diveDirY);
+                            const sh = tt < 14 ? 0.07 * Math.pow(1 - tt / 14, 2) : 0;
+                            ballCarrier.x += ballCarrier.diveDirX * sp + ballCarrier.hitDirX * sh; ballCarrier.y += ballCarrier.diveDirY * sp + ballCarrier.hitDirY * sh;
+                            if (sp > 0.02 && Math.random() < 0.4) spawnDust(ballCarrier.x, ballCarrier.y);
+                        } else {
+                            const dur = st === 'BACK' ? 26 : st === 'FRONT' ? 20 : 16, kk = st === 'BACK' ? 0.20 : st === 'FRONT' ? 0.19 : 0.15;
+                            if (tt < dur) { const decay = Math.pow(1 - tt / dur, 2); ballCarrier.x += ballCarrier.hitDirX * kk * decay; ballCarrier.y += ballCarrier.hitDirY * kk * decay; if (Math.random() < 0.45 * decay + 0.05) spawnDust(ballCarrier.x, ballCarrier.y); }
+                        }
+                    }
                 }
             } 
 
@@ -3603,28 +3626,36 @@ const PXS = (function () {
         shape(hx, uy, th, (lx, ly) => { const col = Math.floor(lx + 3), row = Math.floor(ly + 11); if (row < 0 || row > 5 || col < 0 || col > 6) return 0; const ch = map[row][col]; return ch === '.' ? 0 : (pal[ch] || 0); });
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
-        const tuck = !!o.hasBall && o.armA2 > -0.5;   // ball tucked in the crook of the front arm (dives still reach out with it)
-        if (tuck) {
-            const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th;
-            const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
-            const bx = Math.round(ex0 + 2.0), by = Math.round(ey0 + 1.6);
-            const BR = pack(180, 83, 9), SH = pack(120, 53, 15), WH = pack(250, 250, 250);
-            const row = (dy, c0, c1, c) => { for (let c_ = c0; c_ <= c1; c_++) put(bx + c_, by + dy, c); };
-            row(-2, -2, 2, BR); row(-1, -3, 3, BR); row(-1, -1, 1, WH); row(0, -3, 3, SH); row(1, -2, 2, SH);
-            flush(0);
-        }
-        const fa = arm(o.armA2, o.armB2, 0);
-        if (o.hasBall && !tuck) {
-            const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
-            const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15); const ca = Math.cos(ang), sa = Math.sin(ang);
-            const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1));
-            for (let y = Math.floor(by - 4 * bs); y <= Math.ceil(by + 4 * bs); y++) for (let x = Math.floor(bx - 4 * bs); x <= Math.ceil(bx + 4 * bs); x++) {
-                const dx = x + .5 - bx, dy = y + .5 - by; const u = (dx * ca + dy * sa) / bs, v = (-dx * sa + dy * ca) / bs; if ((u * u) / (2.7 * 2.7) + (v * v) / (1.7 * 1.7) > 1) continue;
-                let c = v > .6 ? pack(120, 53, 15) : pack(180, 83, 9);
-                if (Math.abs(u) < .8 && v < -.2) c = pack(250, 250, 250);
+        const tuck = !!o.hasBall && o.armA2 > -0.5;   // ball tucked under the front arm, held against the ribs (dives still reach out with it)
+        // football: pixel ellipse, tilted along (dirx,diry), laces on top, darker belly underneath
+        const drawBall = (bx, by, ang, bs) => {
+            const ca = Math.cos(ang), sa = Math.sin(ang), A = 2.7 * bs, B = 1.7 * bs;
+            for (let y = Math.floor(by - A - 1); y <= Math.ceil(by + A + 1); y++) for (let x = Math.floor(bx - A - 1); x <= Math.ceil(bx + A + 1); x++) {
+                const dx = x + .5 - bx, dy = y + .5 - by; const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+                if ((u * u) / (A * A) + (v * v) / (B * B) > 1) continue;
+                let c = v > B * .35 ? pack(120, 53, 15) : pack(180, 83, 9);
+                if (Math.abs(u) < .8 * bs && v < -.1) c = pack(250, 250, 250);
                 put(x, y, c);
             }
             flush(0);
+        };
+        let fa;
+        if (tuck) {
+            // geometry of the front arm, computed first so the ball can sit in the crook of it
+            const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th, B0 = A0 - o.armB2;
+            const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
+            const hx0 = ex0 - Math.sin(B0) * 2.3, hy0 = ey0 + Math.cos(B0) * 2.3;
+            const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1)) * 0.8;
+            // ball rests just under the forearm, nose pointing forward past the hand, tail tucked back at the elbow/ribs
+            drawBall((ex0 + hx0) / 2 + 1.0, (ey0 + hy0) / 2 + 1.4, 0.18, bs);
+            fa = arm(o.armA2, o.armB2, 0);   // forearm + hand wrap over the top of the ball
+        } else {
+            fa = arm(o.armA2, o.armB2, 0);
+        }
+        if (o.hasBall && !tuck) {
+            const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
+            const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15);
+            drawBall(bx, by, ang, Math.max(0.7, Math.min(1.5, o.ballScale || 1)));
         }
         cx.putImageData(img, 0, 0);
         return cv;
@@ -4265,7 +4296,7 @@ const PXS = (function () {
             const S = (y, h) => { const q = toScreen(yardX, y); return { x: Math.round(q.x), y: Math.round(q.y) - h }; };
             const base = S(0, 0), stemTop = S(0, barH), farBar = S(-GY, barH), nearBar = S(GY, barH);
             const farTop = S(-GY, barH + upH), nearTop = S(GY, barH + upH);
-            const OUT = '#111827', Y = '#facc15', HI = '#fff7b0', SH = '#a16207', w = u * 2;
+            const OUT = '#6b3a0a', Y = '#eab308', HI = '#fde047', SH = '#a16207', w = u * 2;
             // a pole is a chain of u-sized blocks along a line: outline pass, body pass, shade + highlight
             const pole = (a, b) => {
                 const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / u));
@@ -4283,16 +4314,21 @@ const PXS = (function () {
         }
 
         function drawPixelShadow(wx, wy, rx, ry, PPY, color) {
-            // blocky oval made of field-sized pixels (world units): rx / ry are the half-sizes in world pixels
-            const cw = PPY / FPXX, ch = PPY / FPXY;
-            const nx = Math.max(1, Math.round(rx / cw)), ny = Math.max(1, Math.round(ry / ch));
-            const cx = Math.round((wx * PPY) / cw) * cw, cy = Math.round((wy * PPY) / ch) * ch;
+            // Blocky oval drawn in screen space, anchored with the SAME toScreen()+Math.round the sprites use, so the shadow
+            // moves in lock-step with the player (the old version snapped to a coarser world grid and visibly lagged / stepped).
+            const sc = toScreen(wx, wy);
+            const cxp = Math.round(sc.x), cyp = Math.round(sc.y);
+            const sxr = rx * X_STRETCH, syr = ry * camera.pitch;               // half sizes in screen pixels
+            const cell = Math.max(2, Math.round(camera.zoom * 0.04 * 2.9 * 1.22 * 0.5));   // chunky pixel, half a sprite pixel
+            const nx = Math.max(1, Math.round(sxr / cell)), ny = Math.max(1, Math.round(syr / cell));
+            ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+            if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
             ctx.fillStyle = color; ctx.beginPath();
             for (let j = -ny + 1; j <= ny; j++) {
                 const k = (j - 0.5) / ny, hw = Math.max(1, Math.round(nx * Math.sqrt(Math.max(0, 1 - k * k))));
-                ctx.rect(cx - hw * cw, cy + (j - 1) * ch, hw * 2 * cw, ch);
+                ctx.rect(cxp - hw * cell, cyp + (j - 1) * cell, hw * 2 * cell, cell);
             }
-            ctx.fill();
+            ctx.fill(); ctx.restore();
         }
 
         function drawPlayRoute(pathBuilderFn, color, PPY) {
@@ -4306,7 +4342,8 @@ const PXS = (function () {
         // ===== SIDELINE TURF: pixel grass apron + the team-area (coaching) box =====
         let sidelineTurf = null;
         const TURF_AP = 28, TURF_XP = 31; // yards of turf drawn past the sideline / past each end line
-        const TEAM_BOX = { x0: 40, x1: 80, d0: 1.0, d1: 8.8 }; // yards: along the field, and distance out from the sideline
+        const SL_PUSH = 3.0;   // yards the whole sideline area sits further from the field (people are drawn full size now, so their heads rise toward the field)
+        const TEAM_BOX = { x0: 40, x1: 80, d0: 1.0 + SL_PUSH, d1: 7.6 + SL_PUSH }; // yards: along the field, and distance out from the sideline // yards: along the field, and distance out from the sideline
         function buildSidelineTurf() {
             const Wd = FIELD_WIDTH_YARDS, AP = TURF_AP, XP = TURF_XP;
             const PW = Math.round((FIELD_LENGTH_YARDS + 2 * XP) * FPXX), PH = Math.round((Wd + 2 * AP) * FPXY);
@@ -4561,7 +4598,7 @@ const PXS = (function () {
         function slLayout(sign) {
             if (slLayouts[sign]) return slLayouts[sign];
             const items = []; let seed = sign > 0 ? 7 : 101; const r = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-            const Y = d => sign * (24 + d); const pick = a => a[Math.floor(r() * a.length)];
+            const Y = d => sign * (24 + SL_PUSH + d); const pick = a => a[Math.floor(r() * a.length)];
             const look = () => ({ skin: pick(SL_SKINS), hair: pick(SL_HAIRS), ph: r() * 9, helm: r() < 0.3, girth: 0.95 + r() * 0.2, off: (r() - 0.5) * 16, watch: r() < 0.8, flip: r() < 0.5 });
             const benchY = Y(5.6);
             [46.5, 73.5].forEach(bx => {
@@ -4628,7 +4665,7 @@ const PXS = (function () {
 
         function drawSideline(sign) {
             const isSouth = sign > 0; const items = slLayout(sign); const col = slColors(isSouth);
-            const u = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22 * 0.75); const zoomX = camera.zoom * X_STRETCH;   // sideline folks are drawn smaller than the on-field players
+            const u = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22) * playerSizeScale; const zoomX = camera.zoom * X_STRETCH;   // sideline folks use the exact same pixel size as the on-field players
             const FR = (x, y, w, h) => { const x0 = Math.round(x), y0 = Math.round(y); ctx.fillRect(x0, y0, Math.max(1, Math.round(x + w) - x0), Math.max(1, Math.round(y + h) - y0)); };
             const depth = yd => Math.max(u, Math.round(yd * camera.zoom * camera.pitch));
             const cheer = (gameState === 'TOUCHDOWN_CELEBRATION'); const now = Date.now();
@@ -4779,6 +4816,35 @@ const PXS = (function () {
                 ctx.restore();
             });
 
+            // Pose of a tackled ball carrier. Every style is eased (no linear ramps, no random jitter): a quick impact
+            // recoil, the fall, then a small settle bounce, so tackles read as one smooth motion.
+            const _cl = x => Math.max(0, Math.min(1, x)), _eo = x => 1 - Math.pow(1 - _cl(x), 2), _ei = x => { x = _cl(x); return x * x; };
+            const tackleCarrierPose = (p) => {
+                const tt = p.tackleTimer || 0, st = tackleStyle(p); const along = (p.hitDirX || 0) * (p.facing || 1);
+                const R = { pitch: 0, height: 0, drop: 0, a1: 0, a2: 0, l1: 0, l2: 0, b1: 0.4, b2: 0.4, k1: 0.3, k2: 0.2, fa: 0.3, fb: 2.3 };
+                const settle = (t0, amp) => (tt > t0 ? Math.sin((tt - t0) * 0.55) * amp * Math.max(0, 1 - (tt - t0) / 12) : 0);   // little ground bounce
+                if (st === 'DIVE') {
+                    const k = (p.tkDive || 0) + tt;
+                    if (k < 20) { const t = k / 20; R.height = Math.sin(t * Math.PI) * 22; R.pitch = t * Math.PI * 0.42; R.drop = t * 14; R.a1 = -Math.PI * 0.75; R.a2 = -Math.PI * 0.85; R.l1 = Math.PI / 2.5; R.l2 = Math.PI / 3; }
+                    else { R.pitch = Math.PI * 0.45; R.drop = 14 + settle(0, 0) ; R.a1 = -Math.PI * 0.95; R.a2 = -Math.PI * 0.95; R.l1 = Math.PI / 12; R.l2 = Math.PI / 16; R.pitch -= (tt < 10 ? Math.sin(tt / 10 * Math.PI) * 0.12 : 0); }
+                    R.b1 = R.b2 = 0.08; R.k1 = 0.35; R.k2 = 0.55; R.fa = -Math.PI * 0.8; R.fb = 0.1;
+                } else if (st === 'FRONT') {          // hit head-on: snap back, pop up off the feet, land flat on the back
+                    const f = _eo((tt - 1) / 26), recoil = Math.sin(_cl(tt / 6) * Math.PI) * 0.12;
+                    R.pitch = -f * Math.PI * 0.5 - recoil; R.height = Math.sin(_cl(tt / 18) * Math.PI) * 9; R.drop = f * 14 + settle(18, 1.6);
+                    R.a1 = f * 2.1; R.a2 = 0; R.l1 = -f * 0.6; R.l2 = f * 0.3; R.b1 = 0.4 + f * 0.7; R.b2 = 0.4; R.k1 = 0.3 + f * 0.9; R.k2 = 0.2 + f * 0.6; R.fa = 0.3; R.fb = 2.3;
+                } else if (st === 'BACK') {           // hit from behind: pitched forward, arms out, skids on the chest
+                    const f = _eo((tt - 1) / 24), recoil = Math.sin(_cl(tt / 6) * Math.PI) * 0.1;
+                    R.pitch = f * Math.PI * 0.46 + recoil; R.height = Math.sin(_cl(tt / 16) * Math.PI) * 7; R.drop = f * 14 + settle(16, 1.4);
+                    R.a1 = -f * 2.7; R.a2 = 0; R.l1 = f * 0.9; R.l2 = f * 0.5; R.b1 = 0.4 - f * 0.3; R.b2 = 0.4; R.k1 = 0.3 + f * 0.4; R.k2 = 0.2 + f * 0.7;
+                    R.fa = 0.3 - f * 2.8; R.fb = 2.3 - f * 2.2;
+                } else {                              // SIDE: legs buckle, he spins/crumples toward the push and slumps down
+                    const dir = along >= 0 ? 1 : -1, f1 = _eo((tt - 1) / 14), f2 = _eo((tt - 12) / 20);
+                    R.pitch = dir * (f1 * Math.PI * 0.26 + f2 * Math.PI * 0.2); R.height = Math.sin(_cl(tt / 14) * Math.PI) * 6; R.drop = f1 * 7 + f2 * 7 + settle(24, 1.2);
+                    R.a1 = f1 * 1.6 * -dir; R.a2 = 0; R.l1 = f1 * 0.5 * dir; R.l2 = -f1 * 0.4 * dir; R.b1 = 0.4 + f1 * 0.8; R.b2 = 0.4; R.k1 = 0.3 + f1 * 1.0; R.k2 = 0.2 + f1 * 0.9; R.fa = 0.3; R.fb = 2.3;
+                }
+                return R;
+            };
+
             let allEntities = [...players, ...refs];
             allEntities.sort((a, b) => a.y - b.y);
 
@@ -4886,17 +4952,20 @@ const PXS = (function () {
 
                 if (p.isBlocking) { armAngle1 = -Math.PI / 2.5; armAngle2 = -Math.PI / 2.5; bounce = 0; legAngle1 = Math.PI / 6; legAngle2 = -Math.PI / 6; }
                 
-                let diveHeight = 0; let divePitch = 0; let groundDrop = 0;
+                let diveHeight = 0; let divePitch = 0; let groundDrop = 0; let tcp = null;
                 if (p.isDiving) {
                     let t = Math.min(1, p.diveTimer / 20);
                     if (p.diveTimer < 20) { diveHeight = Math.sin(t * Math.PI) * 22; divePitch = t * (Math.PI * 0.42); groundDrop = t * 14; armAngle1 = -Math.PI * 0.75; armAngle2 = -Math.PI * 0.85; legAngle1 = Math.PI / 2.5; legAngle2 = Math.PI / 3; bounce = 0; } 
                     else { diveHeight = 0; divePitch = Math.PI * 0.45; groundDrop = 14; armAngle1 = -Math.PI * 0.95; armAngle2 = -Math.PI * 0.95; legAngle1 = Math.PI / 12; legAngle2 = Math.PI / 16; bounce = 0; if (p.diveTimer > 20 && p.diveTimer < 26) groundDrop += (Math.random() * 2 - 1) * 2.0; }
                 } else if (isTackledCarrier) {
-                    let t = Math.min(1, (p.tackleTimer || 0) / 15); diveHeight = Math.sin(t * Math.PI) * 10; let fallDir = ((p.hitDirX || 0) * p.facing < 0) ? -1 : 1; divePitch = fallDir * t * (Math.PI * 0.5); groundDrop = t * 14; armAngle1 = Math.PI * 0.8 * t * fallDir; armAngle2 = Math.PI * 0.6 * t * fallDir; legAngle1 = -Math.PI * 0.2 * t * fallDir; legAngle2 = Math.PI * 0.3 * t * fallDir; bounce = 0;
-                    if ((p.tackleTimer||0) > 0 && (p.tackleTimer||0) < 12) { groundDrop += (Math.random() * 2 - 1) * 3.0; divePitch += (Math.random() * 0.12 - 0.06); }
+                    tcp = tackleCarrierPose(p);
+                    diveHeight = tcp.height; divePitch = tcp.pitch; groundDrop = tcp.drop; armAngle1 = tcp.a1; armAngle2 = tcp.a2; legAngle1 = tcp.l1; legAngle2 = tcp.l2; bounce = 0;
                 } else if (p.isTackling) {
-                    let tt2 = p.tackleAnimTimer || 0; let t = Math.min(1, tt2 / 10); groundDrop = 6 * t; divePitch = (Math.PI / 5) * t; armAngle1 = -Math.PI * 0.55 * t; armAngle2 = -Math.PI * 0.65 * t; legAngle1 = Math.PI / 5; legAngle2 = -Math.PI / 5; bounce = 0;
-                    if (tt2 < 8) { groundDrop += (Math.random() * 2 - 1) * 2.2; divePitch += (Math.random() * 0.12 - 0.06); }
+                    const tt2 = p.tackleAnimTimer || 0, eo = x => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
+                    const down = eo(tt2 / 9) * (1 - eo((tt2 - 30) / 18));            // wrap fast, stay down in the pile, then rise
+                    groundDrop = 7 * down; diveHeight = Math.sin(Math.min(1, tt2 / 12) * Math.PI) * 5 * (tt2 < 12 ? 1 : 0);
+                    divePitch = (Math.PI / 4.4) * down + (tt2 < 8 ? Math.sin(tt2 * 1.2) * 0.06 * (1 - tt2 / 8) : 0);
+                    armAngle1 = -Math.PI * 0.6 * down; armAngle2 = -Math.PI * 0.7 * down; legAngle1 = (Math.PI / 5) * down; legAngle2 = -(Math.PI / 5) * down; bounce = 0;
                 } else if (p.isLunging) {
                     let t = Math.min(1, (p.lungeTimer || 0) / 12); diveHeight = Math.sin(t * Math.PI) * 14; divePitch = t * (Math.PI * 0.38); groundDrop = t * 6; armAngle1 = -Math.PI * 0.7; armAngle2 = -Math.PI * 0.8; legAngle1 = Math.PI / 3; legAngle2 = Math.PI / 4; bounce = 0;
                 } else if (p.isMissedTackle) {
@@ -4932,10 +5001,10 @@ const PXS = (function () {
                 let isMovingNow = p.animTimer !== 0; let tAnim = p.animTimer; let cosT = Math.cos(tAnim);
                 if (p.pxSeed === undefined) p.pxSeed = Math.random();
                 let plantPose = false; let aB1 = 0.35, aB2 = 0.35, kn1 = 0.08, kn2 = 0.08, leanA = 0, bobPx = 0, breathPx = 0;
-                let pitchQ = Math.round(divePitch / (Math.PI / 12)) * (Math.PI / 12);
+                let pitchQ = Math.round(divePitch / (Math.PI / 24)) * (Math.PI / 24);
                 const runLegs = () => { kn1 = 1.5 * Math.max(0, cosT); kn2 = 1.5 * Math.max(0, -cosT); };
                 if (p.isDiving) { aB1 = aB2 = 0.08; kn1 = 0.35; kn2 = 0.55; }
-                else if (isTackledCarrier) { aB1 = aB2 = 0.4; kn1 = 0.3; kn2 = 0.2; }
+                else if (isTackledCarrier && tcp) { aB1 = tcp.b1; aB2 = tcp.b2; kn1 = tcp.k1; kn2 = tcp.k2; }
                 else if (p.isTackling) { aB1 = aB2 = 0.35; kn1 = 0.6; kn2 = 0.3; leanA = 0.1; }
                 else if (p.isLunging) { aB1 = aB2 = 0.1; kn1 = 0.5; kn2 = 1.0; }
                 else if (p.isMissedTackle) { aB1 = aB2 = 0.3; kn1 = 0.3; kn2 = 0.3; }
@@ -4946,7 +5015,7 @@ const PXS = (function () {
                 else if (isMovingNow) { aB1 = aB2 = 1.15; runLegs(); leanA = 0.14; bobPx = Math.round(Math.abs(Math.sin(tAnim)) * 1.2); }
                 else { let id = PXS.idle(p.pxSeed); armAngle1 = id.armA1; armAngle2 = id.armA2; legAngle1 = id.legA1; legAngle2 = id.legA2; aB1 = id.armB1; aB2 = id.armB2; kn1 = id.legK1; kn2 = id.legK2; plantPose = true; breathPx = (Math.floor(Date.now() / 520 + p.pxSeed * 9) % 2 === 0) ? 0 : 1; }
                 let frontArmA = armAngle2, frontArmB = aB2;
-                if (p.hasBall && !(p.snapT > 0) && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else { frontArmA = 0.12; frontArmB = 1.75; } }
+                if (p.hasBall && !(p.snapT > 0) && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else if (isTackledCarrier && tcp) { frontArmA = tcp.fa; frontArmB = tcp.fb; } else { frontArmA = 0.3; frontArmB = 2.3; } }
                 let spriteCanvas = PXS.cached({
                     facing: p.facing, girth: (p.girth || 1.0), isRef: !!p.isRef, hasFlag: !!p.hasFlag, hasBall: !!p.hasBall && !(p.snapT > 0), ballScale: ballSizeScale,
                     skin: cSkin, jersey: cJersey, pants: cPants, helmet: cHelmet, jerseyDetail: cJerseyDetail, helmetStripe: cHelmetStripe, pantsStripe: cPantsStripe,
