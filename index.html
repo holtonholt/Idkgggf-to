@@ -86,14 +86,26 @@
         #dialog-name { font-family: 'Press Start 2P', monospace; font-size: 18px; color: #facc15; text-shadow: 2px 2px 0px #000; margin-bottom: 12px; }
         #dialog-text { font-family: 'Press Start 2P', monospace; font-size: 16px; color: white; line-height: 1.5; text-shadow: 2px 2px 0px #000; }
         #dialog-prompt { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #facc15; text-align: right; text-shadow: 2px 2px 0px #000; margin-top: 10px; animation: flashClock 1s infinite; display: none; }
-        /* Visible touch controls: compact joystick and ACT button with hitboxes limited to their circles. */
         #mobile-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: max(18px, env(safe-area-inset-bottom)); transition: opacity 0.2s ease; }
-        /* Pixel-art controls: sprites are drawn in JS (see buildPixelControls) and scaled by a whole-number --u so every pixel stays crisp. */
-        :root { --u: 3; }
-        #joystick-zone { width: calc(45px * var(--u)); height: calc(45px * var(--u)); flex: 0 0 auto; background: var(--js-base) center / 100% 100% no-repeat; image-rendering: pixelated; border: 0; border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; }
-        #joystick-knob { width: calc(21px * var(--u)); height: calc(21px * var(--u)); background: var(--js-knob) center / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; filter: drop-shadow(0 calc(1px * var(--u)) 0 rgba(0,0,0,0.38)); }
-        #action-btn { width: calc(33px * var(--u)); height: calc(33px * var(--u)); flex: 0 0 auto; background: var(--act-up) center / 100% 100% no-repeat; image-rendering: pixelated; border: 0; border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: #fff; font-size: calc(5px * var(--u)); padding-bottom: calc(5px * var(--u)); letter-spacing: 0; text-shadow: calc(0.7px * var(--u)) calc(0.7px * var(--u)) 0 #7f1d1d; margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; }
-        #action-btn:active, #action-btn.active-touch { background-image: var(--act-down); padding-bottom: 0; padding-top: calc(3px * var(--u)); }
+        /* Touch controls: flat, minimal, same look as the scoreboard / panels (dark glass + white outline + hard shadow). */
+        :root { --u: 3; --ctl: clamp(92px, 24vmin, 128px); }
+        #joystick-zone { width: var(--ctl); height: var(--ctl); flex: 0 0 auto; background: rgba(15,23,42,0.45); border: 3px solid rgba(255,255,255,0.85); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; }
+        #joystick-knob { width: 42%; height: 42%; background: rgba(255,255,255,0.92); border: 3px solid #0f172a; border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
+        #action-btn { width: calc(var(--ctl) * 0.72); height: calc(var(--ctl) * 0.72); flex: 0 0 auto; background: rgba(220,38,38,0.8); border: 3px solid rgba(255,255,255,0.9); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: #fff; font-size: clamp(16px, 4.6vmin, 24px); text-shadow: 2px 2px 0 #000; margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; transition: transform 0.06s, background-color 0.06s, box-shadow 0.06s; }
+        #action-btn:active, #action-btn.active-touch { background: rgba(185,28,28,0.95); transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0,0,0,0.55); }
+        /* Pass-type badge (bottom centre, between the stick and the button) */
+        #pass-hud { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9; pointer-events: none; display: none; flex-direction: column; align-items: center; gap: 6px; font-family: 'Press Start 2P', monospace; }
+        #pass-hud.show { display: flex; }
+        #pass-hud-pill { --pc: #fb923c; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(15,23,42,0.88); border: 3px solid var(--pc); border-radius: 6px; box-shadow: 3px 3px 0 rgba(0,0,0,0.7), 0 0 0 0 var(--pc); color: var(--pc); font-size: 11px; letter-spacing: 1px; text-shadow: 2px 2px 0 #000; transition: border-color 0.18s, color 0.18s; }
+        #pass-hud-pill.lob { --pc: #7dd3fc; }
+        #pass-hud-pill svg { width: 22px; height: 14px; display: block; overflow: visible; }
+        #pass-hud-pill.pop { animation: passPop 0.34s cubic-bezier(0.2, 1.6, 0.4, 1); }
+        #pass-hud-pill.bullet.pop svg { animation: passSlideB 0.34s ease-out; }
+        #pass-hud-pill.lob.pop svg { animation: passBounceL 0.42s ease-out; }
+        @keyframes passPop { 0% { transform: scale(0.82); box-shadow: 3px 3px 0 rgba(0,0,0,0.7), 0 0 0 0 var(--pc); } 45% { transform: scale(1.16); box-shadow: 3px 3px 0 rgba(0,0,0,0.7), 0 0 0 7px transparent; } 100% { transform: scale(1); } }
+        @keyframes passSlideB { 0% { transform: translateX(-10px); opacity: 0; } 60% { transform: translateX(3px); opacity: 1; } 100% { transform: translateX(0); } }
+        @keyframes passBounceL { 0% { transform: translateY(8px); opacity: 0; } 55% { transform: translateY(-4px); opacity: 1; } 100% { transform: translateY(0); } }
+        #pass-hud-hint { font-size: 7px; color: #cbd5e1; text-shadow: 1px 1px 0 #000; letter-spacing: 0.5px; opacity: 0.85; white-space: nowrap; }
         @media (hover: hover) and (pointer: fine) { #mobile-controls, #joystick-zone, #action-btn { pointer-events: none !important; } }
         #hub-container { background-color: #facc15; background-image: linear-gradient(45deg, #eab308 25%, transparent 25%), linear-gradient(-45deg, #eab308 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eab308 75%), linear-gradient(-45deg, transparent 75%, #eab308 75%); background-size: 40px 40px; background-position: 0 0, 0 20px, 20px -20px, -20px 0px; }
         
@@ -700,8 +712,9 @@
 
     <div id="mobile-controls">
         <div id="joystick-zone"><div id="joystick-knob"></div></div>
-        <div id="action-btn">ACT</div>
+        <div id="action-btn">X</div>
     </div>
+    <div id="pass-hud"><div id="pass-hud-pill" class="bullet"><span id="pass-hud-ico"></span><span id="pass-hud-name">BULLET</span></div><div id="pass-hud-hint"></div></div>
     
     <canvas id="gameCanvas"></canvas>
 
@@ -781,50 +794,7 @@
         let isRefPenaltyZoom = false;
 
         // Mobile Controls setup
-        // ===== PIXEL-ART CONTROLS: draw the joystick + ACT button as tiny sprites, then scale them up with no smoothing =====
-        (function buildPixelControls() {
-            const root = document.documentElement;
-            const setU = () => { const w = Math.min(window.innerWidth, window.innerHeight * 1.9); const u = w < 520 ? 2 : (w < 900 ? 3 : 4); window._pxU = u; root.style.setProperty('--u', u); };
-            setU(); window.addEventListener('resize', setU);
-            const sprite = (N, paint) => { const c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const col = paint(x, y); if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } } return c; };
-            const over = (a, b) => (x, y) => b(x, y) || a(x, y);
-            // helper: a filled pixel disc layer. shade(t, dist, R) picks the colour; t = lighting from the top-left (-1..1)
-            const disc = (cx, cy, R, shade) => (x, y) => { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy); if (d > R) return null; return shade((-dx - dy) / (R * 1.414), d, R, dx, dy); };
-            // --- joystick base (45x45): dark glass floor, bevelled light rim, four direction pips
-            const base = sprite(45, (x, y) => {
-                const dx = x - 22, dy = y - 22, d = Math.hypot(dx, dy); if (d > 22.4) return null;
-                const t = (-dx - dy) / 31;
-                if (d > 21.2) return '#0b1220';
-                if (d > 18.4) return t > 0.1 ? '#e2e8f0' : (t > -0.45 ? '#94a3b8' : '#64748b');
-                if (d > 17.2) return '#0b1220';
-                const pip = (px, py, vert) => Math.abs(dx - px) + Math.abs(dy - py) <= 1;
-                if ([[0, -13], [0, 13], [-13, 0], [13, 0]].some(q => pip(q[0], q[1]))) return 'rgba(226,232,240,0.85)';
-                if (Math.abs(d - 9.5) < 0.55) return 'rgba(148,163,184,0.28)';
-                return 'rgba(15,23,42,0.74)';
-            });
-            // --- joystick knob (21x21): banded light grey ball with a crisp highlight
-            const knob = sprite(21, (x, y) => {
-                const dx = x - 10, dy = y - 10, d = Math.hypot(dx, dy); if (d > 10.4) return null;
-                const t = (-dx - dy) / 14.1;
-                if (d > 9.3) return '#0b1220';
-                if (x >= 5 && x <= 7 && y >= 4 && y <= 5) return '#ffffff';
-                if (x === 4 && y === 6) return '#ffffff';
-                return t > 0.5 ? '#f8fafc' : t > 0.05 ? '#e2e8f0' : t > -0.4 ? '#cbd5e1' : '#94a3b8';
-            });
-            // --- ACT button (33x33): a red dome sitting on a darker lip; the pressed version sinks into it
-            const act = (top) => sprite(33, (x, y) => {
-                const lip = disc(16, 17, 15.4, (t, d, R) => d > R - 1.1 ? '#3b0a0a' : '#991b1b');
-                const dome = disc(16, top, 15.4, (t, d, R) => {
-                    if (d > R - 1.1) return '#3b0a0a';
-                    if (d > R - 2.3 && t > 0.2) return '#fecaca';
-                    return t > 0.5 ? '#f87171' : t > -0.05 ? '#ef4444' : t > -0.5 ? '#dc2626' : '#b91c1c';
-                });
-                return over(lip, dome)(x, y);
-            });
-            const url = c => 'url(' + c.toDataURL() + ')';
-            root.style.setProperty('--js-base', url(base)); root.style.setProperty('--js-knob', url(knob));
-            root.style.setProperty('--act-up', url(act(14))); root.style.setProperty('--act-down', url(act(16)));
-        })();
+        window._pxU = 3;
         const joystickZone = document.getElementById('joystick-zone');
         const joystickKnob = document.getElementById('joystick-knob');
         const actionBtn = document.getElementById('action-btn');
@@ -889,10 +859,10 @@
         joystickZone.addEventListener('touchend', resetJoystick);
         joystickZone.addEventListener('touchcancel', resetJoystick);
         function updateJoystick(clientX, clientY) {
-            let dx = clientX - joystick.origX; let dy = clientY - joystick.origY; let maxDist = 45; 
+            let dx = clientX - joystick.origX; let dy = clientY - joystick.origY; let maxDist = 40; 
             let dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > maxDist) { dx = (dx/dist) * maxDist; dy = (dy/dist) * maxDist; }
-            { const _u = window._pxU || 3; joystickKnob.style.transform = `translate(${Math.round(dx / _u) * _u}px, ${Math.round(dy / _u) * _u}px)`; }
+            joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
             joystick.dx = dx; joystick.dy = dy; joystick.normX = dx / maxDist; joystick.normY = dy / maxDist;
         }
 
@@ -1924,6 +1894,45 @@
         let isAimingPass = false; let aimStartX = 0, aimStartY = 0; let aimCurrentX = 0, aimCurrentY = 0; let projectedDestX = 0, projectedDestY = 0; let projectedHangTime = 0;
         let aimPointerId = null;
 
+        // ===== PASS TYPES: BULLET (fast, flat, a bit wilder) / LOB (slow, high, more accurate) =====
+        const PASS_TYPES = {
+            BULLET: { mul: 0.58, add: 0,  min: 22, scatter: 1.25, color: '#fb923c', glow: 'rgba(234,88,12,0.5)',  core: '#ffedd5' },
+            LOB:    { mul: 1.3, add: 14, min: 54, scatter: 0.80, color: '#7dd3fc', glow: 'rgba(56,189,248,0.4)', core: '#e0f2fe' }
+        };
+        let passType = 'BULLET'; let projectedDist = 0;
+        const passFx = { mix: 0, switchAt: -1e9, throwAt: -1e9, throwPos: null, thrown: 'BULLET', trail: [], aimAt: 0, wasAiming: false };
+        function passHangFor(type, dist) {
+            const T = PASS_TYPES[type]; const hm = (typeof StatsBridge !== 'undefined' && player) ? StatsBridge.hangMul(player) : 1;
+            const base = Math.max(45, dist * 2.5) * hm;
+            return Math.max(T.min, Math.min(base * T.mul, base + (T.add || 9999)));
+        }
+        function setPassType(t) {
+            if (!PASS_TYPES[t] || passType === t) return;
+            passType = t; passFx.switchAt = performance.now();
+            if (isAimingPass && player) updatePassProjection();
+            try { if (navigator.vibrate) navigator.vibrate(t === 'BULLET' ? 14 : [8, 30, 8]); } catch (e) {}
+        }
+        function togglePassType() { setPassType(passType === 'BULLET' ? 'LOB' : 'BULLET'); }
+        const _passToggleZone = (x, y) => x < window.innerWidth * 0.5 || y < window.innerHeight * 0.28;   // left side or top strip of the screen
+        let _lastTouchAt = -1e9; const _hoverNone = () => window.matchMedia && window.matchMedia('(hover: none)').matches;
+        window.addEventListener('touchstart', (e) => {
+            _lastTouchAt = performance.now();
+            if (!canAimPass()) return;
+            if (e.target.closest && e.target.closest('#joystick-zone, #action-btn, .retro-btn, #btn-pause, #dialog-box')) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === aimPointerId) continue;                  // that finger is the one aiming
+                if (_passToggleZone(t.clientX, t.clientY)) { togglePassType(); break; }
+            }
+        }, { passive: true });
+        window.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || _hoverNone() || performance.now() - _lastTouchAt < 800) return;
+            if (!canAimPass() || (e.target.closest && e.target.closest('#joystick-zone, #action-btn, .retro-btn, #btn-pause, #dialog-box'))) return;
+            if (e.clientX < window.innerWidth * 0.5) togglePassType();
+        });
+        window.addEventListener('contextmenu', (e) => { if (_hoverNone() || !canAimPass()) return; e.preventDefault(); togglePassType(); });
+        window.addEventListener('keydown', (e) => { if (e.repeat) return; if ((e.code === 'KeyQ' || e.code === 'KeyE' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && canAimPass()) togglePassType(); });
+
         window.addEventListener('mousedown', (e) => {
             if (e.target.closest('#mobile-controls') || e.target.closest('.retro-btn') || e.target.closest('#dialog-box') || e.target.closest('#btn-pause')) return;
             if (e.clientX < window.innerWidth / 2) return; 
@@ -2216,7 +2225,8 @@
             projectedDestX = Math.max(-5, Math.min(FIELD_LENGTH_YARDS + 5, worldPos.x)); projectedDestY = Math.max(-(FIELD_WIDTH_YARDS/2) - 5, Math.min((FIELD_WIDTH_YARDS/2) + 5, worldPos.y));
             let actualDist = Math.sqrt(Math.pow(projectedDestX - player.x, 2) + Math.pow(projectedDestY - player.y, 2));
             { const _rg = StatsBridge.throwRange(player); if (actualDist > _rg) { const _k = _rg / actualDist; projectedDestX = player.x + (projectedDestX - player.x) * _k; projectedDestY = player.y + (projectedDestY - player.y) * _k; actualDist = _rg; } }
-            projectedHangTime = Math.max(38, Math.max(45, actualDist * 2.5) * StatsBridge.hangMul(player));
+            projectedDist = actualDist;
+            projectedHangTime = passHangFor(passType, actualDist);
         }
 
         function executePass() {
@@ -2225,6 +2235,7 @@
             
             if (isMultiplayer && isMpClient) {
                 if (Math.hypot(aimStartX - aimCurrentX, aimStartY - aimCurrentY) < 15) return;
+                passFx.thrown = passType; passFx.trail.length = 0; passFx.throwAt = performance.now(); passFx.throwPos = { x: player.x, y: player.y };
                 clientPassRequest = { x: projectedDestX, y: projectedDestY, ht: projectedHangTime };
                 if (player) { // start the throw locally right away instead of waiting a full round trip for the host
                     const ht = Math.max(20, projectedHangTime || 45), z0 = 1.2, g = 0.008;
@@ -2237,7 +2248,8 @@
             let qb = players.find(p => p.hasBall); if (!qb || qb.snapT > 0) return;
             let dragDist = Math.sqrt(Math.pow(aimStartX - aimCurrentX, 2) + Math.pow(aimStartY - aimCurrentY, 2)); if (dragDist < 15) return; 
             qb.hasBall = false; ball.isBadPass = false; ball.destX = projectedDestX; ball.destY = projectedDestY; let hangTime = projectedHangTime;
-            { const _sc = StatsBridge.scatter(qb, Math.hypot(ball.destX - qb.x, ball.destY - qb.y)); if (_sc > 0) { const _a = Math.random() * Math.PI * 2, _r = Math.sqrt(Math.random()) * _sc; ball.destX += Math.cos(_a) * _r; ball.destY += Math.sin(_a) * _r; } }
+            passFx.thrown = passType; passFx.trail.length = 0; passFx.throwAt = performance.now(); passFx.throwPos = { x: qb.x, y: qb.y };
+            { const _sc = StatsBridge.scatter(qb, Math.hypot(ball.destX - qb.x, ball.destY - qb.y)) * PASS_TYPES[passType].scatter; if (_sc > 0) { const _a = Math.random() * Math.PI * 2, _r = Math.sqrt(Math.random()) * _sc; ball.destX += Math.cos(_a) * _r; ball.destY += Math.sin(_a) * _r; } }
             ball.vx = (ball.destX - ball.x) / hangTime; ball.vy = (ball.destY - ball.y) / hangTime;
             let z0 = 1.2; let zTarget = 1.0; let g = 0.008; ball.vz = ((zTarget - z0) / hangTime) + (g * hangTime / 2) + (g / 2);
             ball.z = z0; ball.isDeadPass = false; ball.pbuMessage = ""; ball.spinAngle = 0; isPassing = true; gameState = 'BALL_IN_AIR'; camera.target = ball;
@@ -4481,49 +4493,35 @@ const PXS = (function () {
             }
             return out;
         }
-        function getRouteLayer(play) {
-            const paths = computeRoutePaths(play); if (!paths.length) return null;
-            const key = play + '|' + offenseDirection + '|' + lineOfScrimmage + '|' + paths.map(q => q.length + ':' + Math.round(q[0][0] * 4) + ',' + Math.round(q[0][1] * 4) + ',' + Math.round(q[q.length - 1][0] * 4) + ',' + Math.round(q[q.length - 1][1] * 4)).join(';');
-            if (_routeCanvas && key === _routeKey) return _routeCanvas;
-            const PW = Math.round(FIELD_LENGTH_YARDS * FPXX), PH = Math.round(FIELD_WIDTH_YARDS * FPXY);
-            if (!_routeCanvas) { _routeCanvas = document.createElement('canvas'); _routeCanvas.width = PW; _routeCanvas.height = PH; }
-            const g = _routeCanvas.getContext('2d'); g.clearRect(0, 0, PW, PH);
-            const solid = new Set();
-            const setPx = (x, y) => { if (x >= 0 && y >= 0 && x < PW && y < PH) solid.add(y * PW + x); };
-            // straighten the simulated path into a few clean segments (Ramer-Douglas-Peucker)
-            const rdp = (pts, tol) => { if (pts.length < 3) return pts; const a = pts[0], b = pts[pts.length - 1]; let m = 0, mi = 0; const dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.hypot(dx, dy) || 1;
-                for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / dl; if (d > m) { m = d; mi = i; } }
-                if (m <= tol) return [a, b]; const l = rdp(pts.slice(0, mi + 1), tol), r = rdp(pts.slice(mi), tol); return l.slice(0, -1).concat(r); };
+        // Route lines: thin vector chalk lines with a small arrowhead (Retro Bowl style), drawn in screen space so they stay slim at every zoom.
+        function _rdpSimplify(pts, tol) {
+            if (pts.length < 3) return pts;
+            const a = pts[0], b = pts[pts.length - 1]; let m = 0, mi = 0; const dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.hypot(dx, dy) || 1;
+            for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / dl; if (d > m) { m = d; mi = i; } }
+            if (m <= tol) return [a, b];
+            const l = _rdpSimplify(pts.slice(0, mi + 1), tol), r = _rdpSimplify(pts.slice(mi), tol); return l.slice(0, -1).concat(r);
+        }
+        function drawRouteLines(play) {
+            const paths = computeRoutePaths(play); if (!paths.length) return;
+            const Z = camera.zoom;
+            const lw = Math.max(1.3, Math.min(2.2, Z * 0.042));            // line thickness in screen px
+            const headL = Math.max(5, Math.min(9, Z * 0.22)), headW = headL * 0.46;
+            ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
+            ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             paths.forEach(path => {
-                const pp = rdp(path, 0.6).map(xy => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY]);
-                let total = 0; for (let i = 1; i < pp.length; i++) total += Math.hypot(pp[i][0] - pp[i - 1][0], pp[i][1] - pp[i - 1][1]);
-                if (total < 6) return;
-                // chalk dashes: 2px thick, 4 on / 2 off, ending in a solid pixel arrowhead
-                let run = 0;
-                for (let i = 1; i < pp.length; i++) {
-                    const [x0, y0] = pp[i - 1], [x1, y1] = pp[i], len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.ceil(len * 2));
-                    for (let j = 0; j <= n; j++) {
-                        const d = run + len * j / n; if (total - d < 5.5) continue;            // the arrowhead covers the last stretch
-                        if ((d % 6) >= 4) continue;
-                        const x = Math.round(x0 + (x1 - x0) * j / n - 0.5), y = Math.round(y0 + (y1 - y0) * j / n - 0.5);
-                        setPx(x, y); setPx(x + 1, y); setPx(x, y + 1); setPx(x + 1, y + 1);
-                    }
-                    run += len;
-                }
-                const e = pp[pp.length - 1]; let k = pp.length - 2; while (k > 0 && Math.hypot(e[0] - pp[k][0], e[1] - pp[k][1]) < 3) k--;
-                let dx = e[0] - pp[k][0], dy = e[1] - pp[k][1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-                const HL = 7, tx = e[0] + dx * 1.2, ty = e[1] + dy * 1.2, px = -dy, py = dx;
-                // solid line section under the head so it joins cleanly
-                for (let t = 0; t < HL; t += 0.5) { const x = Math.round(tx - dx * t - 0.5), y = Math.round(ty - dy * t - 0.5); setPx(x, y); setPx(x + 1, y); setPx(x, y + 1); setPx(x + 1, y + 1); }
-                for (let yy = Math.floor(ty - HL - 1); yy <= Math.ceil(ty + HL + 1); yy++) for (let xx = Math.floor(tx - HL - 1); xx <= Math.ceil(tx + HL + 1); xx++) {
-                    const qx = xx + 0.5 - tx, qy = yy + 0.5 - ty, u = -(qx * dx + qy * dy), v = qx * px + qy * py;
-                    if (u >= -0.3 && u <= HL && Math.abs(v) <= 0.4 + u * 0.5) setPx(xx, yy);
-                }
+                const pts = _rdpSimplify(path, 0.6).map(q => { const sc = toScreen(q[0], q[1]); return [sc.x, sc.y]; });
+                if (pts.length < 2) return;
+                let total = 0; for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+                if (total < 8) return;
+                const e = pts[pts.length - 1]; let k = pts.length - 2; while (k > 0 && Math.hypot(e[0] - pts[k][0], e[1] - pts[k][1]) < 3) k--;
+                let dx = e[0] - pts[k][0], dy = e[1] - pts[k][1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                const bx = e[0] - dx * headL, by = e[1] - dy * headL, px = -dy, py = dx;
+                const shaft = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.lineTo(bx, by); };
+                const head = () => { ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(bx + px * headW, by + py * headW); ctx.lineTo(bx - px * headW, by - py * headW); ctx.closePath(); };
+                ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = lw + 1.6; shaft(); ctx.stroke(); head(); ctx.stroke();
+                ctx.strokeStyle = 'rgba(243,247,239,0.95)'; ctx.fillStyle = 'rgba(243,247,239,0.95)'; ctx.lineWidth = lw; shaft(); ctx.stroke(); head(); ctx.fill();
             });
-            const shadow = new Set(); solid.forEach(k => { const x = k % PW, y = (k - x) / PW; if (x + 1 < PW && y + 1 < PH) { const nk = (y + 1) * PW + x + 1; if (!solid.has(nk)) shadow.add(nk); } });
-            g.fillStyle = ROUTE_PAL.shadow; shadow.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
-            g.fillStyle = ROUTE_PAL.fill; solid.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
-            _routeKey = key; return _routeCanvas;
+            ctx.restore();
         }
 
         function drawPlayRoute(pathBuilderFn, color, PPY) {
@@ -4966,26 +4964,8 @@ const PXS = (function () {
                 if (isMultiplayer && isMpClient && !isPlayerOffense) routeColor = '#ff003c'; 
 
                 if (drawPlay) {
-                    // Routes are painted INTO the field's own pixel grid (same pixel size as the turf), so they read as
-                    // chalk/paint on the grass and sit underneath every player sprite drawn afterwards.
-                    const rl = getRouteLayer(currentTeamPlay);
-                    if (rl) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.9; ctx.drawImage(rl, 0, fieldTop, 120 * PPY, fieldHeight); ctx.restore(); }
+                    drawRouteLines(currentTeamPlay);   // thin chalk routes with small arrowheads, under every player sprite
                 }
-            }
-
-            if (isAimingPass || (gameState === 'BALL_IN_AIR' && isPassing)) {
-                let bx = (isAimingPass ? projectedDestX : ball.destX) * PPY; let by = (isAimingPass ? projectedDestY : ball.destY) * PPY;
-                ctx.save(); let targetColor = isAimingPass ? '#facc15' : '#ef4444'; ctx.fillStyle = targetColor;
-                let pSize = Math.max(4, PPY * 0.3); let offset = PPY * 0.4;
-                for(let i = -2; i <= 2; i++) { ctx.fillRect(bx + i*offset - pSize/2, by + i*offset - pSize/2, pSize, pSize); if (i !== 0) ctx.fillRect(bx + i*offset - pSize/2, by - i*offset - pSize/2, pSize, pSize); }
-                if (gameState === 'BALL_IN_AIR') {
-                    let maxRadius = PPY * 1.5; let ringRadius = Math.max(PPY * 0.2, (ball.z / 3.0) * maxRadius); ctx.fillStyle = '#ef4444'; let numDots = 12;
-                    for (let i = 0; i < numDots; i++) { let angle = (i / numDots) * Math.PI * 2; let dotX = bx + Math.cos(angle) * (ringRadius / X_STRETCH); let dotY = by + Math.sin(angle) * ringRadius; ctx.fillRect(dotX - pSize/2, dotY - pSize/2, pSize, pSize); }
-                } else if (isAimingPass) {
-                    ctx.fillStyle = 'rgba(250, 204, 21, 0.6)'; let ringRad = PPY * 2.5; let numDots = 16; let rot = Date.now() / 500;
-                    for(let i=0; i<numDots; i++) { if (i % 2 === 0) continue; let angle = rot + (i / numDots) * Math.PI * 2; let dotX = bx + Math.cos(angle) * (ringRad / X_STRETCH); let dotY = by + Math.sin(angle) * ringRad; ctx.fillRect(dotX - pSize/2, dotY - pSize/2, pSize, pSize); }
-                }
-                ctx.restore();
             }
 
             // Draw Penalty Flags on field
@@ -5075,18 +5055,7 @@ const PXS = (function () {
             }
             ctx.restore(); 
 
-            if (isAimingPass) {
-                ctx.save();
-                let z0 = 1.2; let ht = projectedHangTime; let pVx = (projectedDestX - player.x) / ht; let pVy = (projectedDestY - player.y) / ht; let g = 0.008; let pVz = ((1.0 - z0) / ht) + (g * ht / 2) + (g / 2);
-                ctx.beginPath(); ctx.setLineDash([8, 8]); ctx.lineWidth = Math.max(2, camera.zoom * 0.08); ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)'; ctx.lineCap = 'round';
-                let first = true;
-                for (let t = 1; t <= ht; t += 2) {
-                    let cx = player.x + pVx * t; let cy = player.y + pVy * t; let cz = z0 + pVz * t - 0.5 * g * t * (t - 1); 
-                    let cScreen = toScreen(cx, cy); let visualZ = cz * camera.zoom * 0.6;
-                    if (first) { ctx.moveTo(cScreen.x, cScreen.y - visualZ); first = false; } else { ctx.lineTo(cScreen.x, cScreen.y - visualZ); }
-                }
-                ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-            }
+            drawPassAim();   // thin trajectory + reticle + bullet/lob effects
 
             if (camera.currentX > 70) drawGoalpost(120, 0); if (camera.currentX < 50) drawGoalpost(0, 0);   
 
@@ -5222,11 +5191,11 @@ const PXS = (function () {
             });
             // ---- clarity markers, drawn on top of every sprite: YELLOW arrow = ball carrier, BLUE arrow = YOU ----
             if (!isIntroScene && ['PRE_SNAP', 'PLAYING', 'BALL_IN_AIR', 'BALL_LOOSE'].includes(gameState)) {
-                const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22) * playerSizeScale, _bob = Math.sin(Date.now() / 140) * _spx * 1.4;
+                const _spx = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22) * playerSizeScale, _bob = Math.sin(Date.now() / 140) * _spx * 0.9;
                 const _me = (!isMultiplayer || isMpHost) ? player : (isMpClient ? p2Player : null), _bc = players.find(q => q.hasBall);
                 const _arrow = (q, fill) => {
-                    const sc = toScreen(q.x, q.y), w = Math.max(3, _spx * 3.0), hg = w * 1.15, tipY = -19.5 * _spx + _bob;
-                    ctx.save(); ctx.translate(Math.round(sc.x), Math.round(sc.y)); ctx.fillStyle = fill; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1.5, _spx * 0.8); ctx.lineJoin = 'round';
+                    const sc = toScreen(q.x, q.y), w = Math.max(2.5, _spx * 1.25), hg = w * 1.05, tipY = -19.5 * _spx + _bob;
+                    ctx.save(); ctx.translate(Math.round(sc.x), Math.round(sc.y)); ctx.fillStyle = fill; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, _spx * 0.3); ctx.lineJoin = 'round';
                     ctx.beginPath(); ctx.moveTo(-w, tipY - hg); ctx.lineTo(w, tipY - hg); ctx.lineTo(0, tipY); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
                 };
                 if (_bc && gameState === 'PLAYING') _arrow(_bc, '#facc15');
@@ -5433,19 +5402,131 @@ const PXS = (function () {
             _ptEl.style.display = 'flex';
         }
 
+
+        // ===== PASS AIM RENDERER: trajectory, landing reticle, switch/throw effects, flight trail =====
+        const _ease = { outCubic: t => 1 - Math.pow(1 - t, 3), outBack: t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); } };
+        function drawPassAim() {
+            const now = performance.now(), Z = camera.zoom, lw = Math.max(1.4, Math.min(2.4, Z * 0.045));
+            const aiming = isAimingPass && !!player, inFlight = gameState === 'BALL_IN_AIR' && isPassing;
+            const sinceSwitch = now - passFx.switchAt, sinceThrow = now - passFx.throwAt;
+            if (!aiming && !inFlight && sinceSwitch > 700 && sinceThrow > 400) { passFx.wasAiming = false; if (passFx.trail.length) passFx.trail.length = 0; return; }
+            const gx = Z * X_STRETCH, gy = Z * camera.pitch, zH = Z * 0.6;                 // screen px per yard (ground x / ground y) and per yard of height
+            const T = PASS_TYPES[passType];
+            passFx.mix += ((passType === 'LOB' ? 1 : 0) - passFx.mix) * 0.22;           // arc height morphs smoothly between the two throws
+            if (aiming && !passFx.wasAiming) passFx.aimAt = now; passFx.wasAiming = aiming;
+            ctx.save(); ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            // ---------- while aiming: arc + reticle ----------
+            if (aiming) {
+                const reveal = _ease.outCubic(Math.min(1, (now - passFx.aimAt) / 190));
+                const ht = passHangFor('BULLET', projectedDist) * (1 - passFx.mix) + passHangFor('LOB', projectedDist) * passFx.mix;   // visual flight time
+                const z0 = 1.2, g = 0.008, vx = (projectedDestX - player.x) / ht, vy = (projectedDestY - player.y) / ht, vz = ((1.0 - z0) / ht) + (g * ht / 2) + (g / 2);
+                const N = 34, pts = [];
+                for (let i = 0; i <= N * reveal; i++) { const t = Math.max(1, ht * i / N); const sc = toScreen(player.x + vx * t, player.y + vy * t); pts.push([sc.x, sc.y - (z0 + vz * t - 0.5 * g * t * (t - 1)) * zH]); }
+                const line = () => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); };
+                const along = f => { const i = Math.max(0, Math.min(pts.length - 1, f * (pts.length - 1))), i0 = Math.floor(i), i1 = Math.min(pts.length - 1, i0 + 1), k = i - i0; return [pts[i0][0] + (pts[i1][0] - pts[i0][0]) * k, pts[i0][1] + (pts[i1][1] - pts[i0][1]) * k]; };
+                if (pts.length > 1) {
+                    if (passType === 'BULLET') {
+                        ctx.strokeStyle = T.glow; ctx.lineWidth = lw + 2.5; line(); ctx.stroke();
+                        ctx.strokeStyle = T.core; ctx.lineWidth = lw; line(); ctx.stroke();
+                        // fast tracer racing down the line
+                        const ph = (now / 420) % 1;
+                        for (let k = 0; k < 6; k++) { const f = Math.max(0, ph - k * 0.022); if (f <= 0) continue; const q = along(f * (pts.length > 1 ? 1 : 0)); ctx.globalAlpha = 1 - k / 6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1.2, lw * (1.3 - k * 0.15)), 0, 6.283); ctx.fill(); }
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // soft marching dots along a high arc, plus a ground line to read the distance
+                        const gs = toScreen(player.x, player.y), ge = toScreen(projectedDestX, projectedDestY);
+                        ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(gs.x, gs.y); ctx.lineTo(ge.x, ge.y); ctx.stroke(); ctx.setLineDash([]);
+                        const step = Math.max(9, Z * 0.34), off = (now / 38) % step;
+                        let run = -off; ctx.fillStyle = T.core;
+                        for (let i = 1; i < pts.length; i++) {
+                            const x0 = pts[i - 1][0], y0 = pts[i - 1][1], x1 = pts[i][0], y1 = pts[i][1], sl = Math.hypot(x1 - x0, y1 - y0);
+                            while (run + step <= sl) { run += step; const f = run / (sl || 1); const dx = x0 + (x1 - x0) * f, dy = y0 + (y1 - y0) * f; ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.3, lw * 0.85), 0, 6.283); ctx.fill(); }
+                            run -= sl;
+                        }
+                        // floating sparkles drifting up the arc
+                        for (let k = 0; k < 3; k++) { const f = ((now / 1500) + k / 3) % 1, q = along(f), pulse = 0.5 + 0.5 * Math.sin(now / 160 + k * 2); ctx.globalAlpha = 0.35 + 0.5 * pulse; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1] - 2 - pulse * 2, 1.6 + pulse * 1.4, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
+                    }
+                }
+                // landing reticle (flat on the grass)
+                const ds = toScreen(projectedDestX, projectedDestY);
+                const snap = sinceSwitch < 300 ? 1 + 0.7 * (1 - _ease.outBack(Math.min(1, sinceSwitch / 300))) : 1;
+                if (passType === 'BULLET') {
+                    const R = 1.0 * snap * (1 + 0.06 * Math.sin(now / 80)), rx = R * gx, ry = R * gy, tk = 0.42;
+                    ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.beginPath();
+                    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { ctx.moveTo(ds.x + sx * rx, ds.y + sy * ry * (1 - tk)); ctx.lineTo(ds.x + sx * rx, ds.y + sy * ry); ctx.lineTo(ds.x + sx * rx * (1 - tk), ds.y + sy * ry); });
+                    ctx.stroke(); ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.5, lw), 0, 6.283); ctx.fill();
+                } else {
+                    const R = 1.9 * snap, rx = R * gx, ry = R * gy;
+                    ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.globalAlpha = 0.9; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -now / 70;
+                    ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
+                    const ph = (now / 950) % 1, ir = 1 - 0.7 * ph;                 // inner ring shrinks like the ball dropping in
+                    ctx.globalAlpha = 0.85 * (1 - ph); ctx.strokeStyle = T.core; ctx.lineWidth = Math.max(1, lw * 0.8); ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx * ir, ry * ir, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1;
+                    ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.3, lw * 0.8), 0, 6.283); ctx.fill();
+                }
+            }
+
+            // ---------- switch burst + release pop at the QB's hands ----------
+            const burst = (wx, wy, age, dur, type) => {
+                if (age < 0 || age > dur) return; const u = age / dur, C = PASS_TYPES[type], sc = toScreen(wx, wy), cx = sc.x, cy = sc.y - 1.2 * zH;
+                ctx.globalAlpha = 1 - u; ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.5, lw * (1.4 - u));
+                ctx.beginPath(); ctx.arc(cx, cy, 6 + _ease.outCubic(u) * (type === 'BULLET' ? 30 : 22), 0, 6.283); ctx.stroke();
+                if (type === 'BULLET') { ctx.strokeStyle = C.core; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.beginPath(); for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.39, r0 = 10 + _ease.outCubic(u) * 18, r1 = r0 + 9 * (1 - u); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); } ctx.stroke(); }
+                else { ctx.fillStyle = C.core; for (let k = 0; k < 7; k++) { const a = k * 6.283 / 7, r = 8 + _ease.outCubic(u) * 14; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r - u * 14, Math.max(1, 2.2 * (1 - u)), 0, 6.283); ctx.fill(); } }
+                ctx.globalAlpha = 1;
+            };
+            if (player && gameState === 'PLAYING') burst(player.x, player.y, sinceSwitch, 420, passType);
+            if (passFx.throwPos) burst(passFx.throwPos.x, passFx.throwPos.y, sinceThrow, 260, passFx.thrown);
+
+            // ---------- in flight: landing ring that closes in + a trail that matches the throw ----------
+            if (inFlight) {
+                const C = PASS_TYPES[passFx.thrown] || T, isB = passFx.thrown === 'BULLET';
+                const ds = toScreen(ball.destX, ball.destY), R = Math.max(0.3, Math.min(2.0, ball.z * 0.5)), rx = R * gx, ry = R * gy;
+                ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(ds.x - 3, ds.y); ctx.lineTo(ds.x + 3, ds.y); ctx.moveTo(ds.x, ds.y - 2); ctx.lineTo(ds.x, ds.y + 2); ctx.stroke(); ctx.globalAlpha = 1;
+                passFx.trail.push({ x: ball.x, y: ball.y, z: ball.z }); const maxT = isB ? 16 : 26; while (passFx.trail.length > maxT) passFx.trail.shift();
+                const tr = passFx.trail.map(q => { const sc = toScreen(q.x, q.y); return [sc.x, sc.y - q.z * zH]; });
+                if (isB) { for (let i = 1; i < tr.length; i++) { const f = i / tr.length; ctx.globalAlpha = f * 0.8; ctx.strokeStyle = f > 0.7 ? '#fff' : C.color; ctx.lineWidth = Math.max(1, lw * 2.2 * f); ctx.beginPath(); ctx.moveTo(tr[i - 1][0], tr[i - 1][1]); ctx.lineTo(tr[i][0], tr[i][1]); ctx.stroke(); } }
+                else { for (let i = 0; i < tr.length; i += 2) { const f = i / tr.length; ctx.globalAlpha = f * 0.75; ctx.fillStyle = f > 0.6 ? '#fff' : C.color; ctx.beginPath(); ctx.arc(tr[i][0], tr[i][1], Math.max(1, lw * 1.2 * f), 0, 6.283); ctx.fill(); } }
+                ctx.globalAlpha = 1;
+            } else if (passFx.trail.length) passFx.trail.length = 0;
+            ctx.restore();
+        }
+
+        // ===== pass-type badge (DOM) =====
+        const _hud = { shown: false, type: null };
+        const _PASS_ICO = {
+            BULLET: '<svg viewBox="0 0 22 14"><path d="M1 3h5M0 7h9M1 11h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"/><path d="M10 1l11 6-11 6z" fill="currentColor"/></svg>',
+            LOB: '<svg viewBox="0 0 22 14"><path d="M1 13Q11 -9 21 13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none" stroke-dasharray="0.1 4.6"/><circle cx="11" cy="3" r="2.6" fill="currentColor"/></svg>'
+        };
+        function hidePassHud() { const h = document.getElementById('pass-hud'); if (h) h.classList.remove('show'); _hud.shown = false; _hud.type = null; }
+        function updatePassHud() {
+            const hud = document.getElementById('pass-hud'); if (!hud) return;
+            let show = false; try { show = !!canAimPass(); } catch (e) {}
+            if (show !== _hud.shown) { hud.classList.toggle('show', show); _hud.shown = show; if (show) _hud.type = null; }
+            if (!show || _hud.type === passType) return;
+            const pill = document.getElementById('pass-hud-pill'), first = _hud.type === null;
+            pill.className = passType === 'LOB' ? 'lob' : 'bullet';
+            document.getElementById('pass-hud-ico').innerHTML = _PASS_ICO[passType]; document.getElementById('pass-hud-name').textContent = passType;
+            document.getElementById('pass-hud-hint').textContent = _hoverNone() ? 'TAP LEFT / TOP TO SWITCH' : 'Q / RIGHT-CLICK TO SWITCH';
+            if (!first) { void pill.offsetWidth; pill.classList.add('pop'); }
+            _hud.type = passType;
+        }
+
         function loop(timestamp) {
             if (!lastTime) lastTime = timestamp;
             let frameTime = timestamp - lastTime; lastTime = timestamp;
             if (frameTime > 100) frameTime = 100; 
 
-            if (window._csBgActive) { accumulator = 0; if (window.csBgStep) window.csBgStep(frameTime); drawGame(); window._mpOverlay = false; requestAnimationFrame(loop); return; } // career menu backdrop: real stadium, no game sim
-            if (canvas.style.display === 'none') { accumulator = 0; requestAnimationFrame(loop); return; } // hub is showing: nothing to simulate or draw
+            if (window._csBgActive) { accumulator = 0; if (window.csBgStep) window.csBgStep(frameTime); hidePassHud(); drawGame(); window._mpOverlay = false; requestAnimationFrame(loop); return; } // career menu backdrop: real stadium, no game sim
+            if (canvas.style.display === 'none') { accumulator = 0; hidePassHud(); requestAnimationFrame(loop); return; } // hub is showing: nothing to simulate or draw
             accumulator += frameTime;
             while (accumulator >= timeStep) {
                 try { update(); if (window.StatsBridge) StatsBridge.tickStamina(); } catch (err) { console.error('update error', err); }
                 accumulator -= timeStep;
             }
             try { updatePlayerTag(); } catch (e) {}
+            try { updatePassHud(); } catch (e) {}
 
             try { drawGame(); } catch (err) { console.error('draw error', err); } window._mpOverlay = false;
             requestAnimationFrame(loop);
