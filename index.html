@@ -86,13 +86,11 @@
         #dialog-name { font-family: 'Press Start 2P', monospace; font-size: 18px; color: #facc15; text-shadow: 2px 2px 0px #000; margin-bottom: 12px; }
         #dialog-text { font-family: 'Press Start 2P', monospace; font-size: 16px; color: white; line-height: 1.5; text-shadow: 2px 2px 0px #000; }
         #dialog-prompt { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #facc15; text-align: right; text-shadow: 2px 2px 0px #000; margin-top: 10px; animation: flashClock 1s infinite; display: none; }
-        /* Invisible touch zones cover each half of the gameplay screen. The left side is a floating joystick; the right side is ACT / pass-aim. */
-        #mobile-controls { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 7; pointer-events: none; display: flex; transition: opacity 0.2s ease; padding: 0; }
-        #joystick-zone { position: absolute; inset: 0 auto 0 0; width: 50%; height: 100%; box-sizing: border-box; background: transparent; border: 0; border-radius: 0; pointer-events: auto; display: block; box-shadow: none; margin: 0; touch-action: none; }
-        #joystick-knob { display: none !important; width: 0; height: 0; background: transparent; box-shadow: none; pointer-events: none; }
-        #action-btn { position: absolute; inset: 0 0 0 auto; width: 50%; height: 100%; box-sizing: border-box; background: transparent; border: 0; border-radius: 0; pointer-events: auto; display: block; color: transparent; font-size: 0; box-shadow: none; text-shadow: none; margin: 0; touch-action: none; }
-        #action-btn:active, #action-btn.active-touch { transform: none; box-shadow: none; background: transparent; }
-        @media (hover: hover) and (pointer: fine) { #mobile-controls, #joystick-zone, #action-btn { pointer-events: none !important; } }
+        #mobile-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2000; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; padding-left: max(30px, env(safe-area-inset-left)); padding-right: max(30px, env(safe-area-inset-right)); padding-bottom: max(30px, env(safe-area-inset-bottom)); transition: opacity 0.2s ease; }
+        #joystick-zone { width: 150px; height: 150px; background: rgba(255, 255, 255, 0.05); border: 4px solid rgba(255, 255, 255, 0.2); border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); margin-bottom: 20px; }
+        #joystick-knob { width: 60px; height: 60px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: none; transition: transform 0.05s linear; }
+        #action-btn { width: 100px; height: 100px; background: rgba(239, 68, 68, 0.6); border: 4px solid rgba(255, 255, 255, 0.4); border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: white; font-size: 16px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.4), 0 4px 10px rgba(0,0,0,0.5); text-shadow: 2px 2px 0 #000; margin-bottom: 30px; }
+        #action-btn:active, #action-btn.active-touch { transform: translateY(4px); box-shadow: inset 0 0px 0 rgba(0,0,0,0.4), 0 0px 0 rgba(0,0,0,0.5); background: rgba(239, 68, 68, 0.9); }
         #hub-container { background-color: #facc15; background-image: linear-gradient(45deg, #eab308 25%, transparent 25%), linear-gradient(-45deg, #eab308 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eab308 75%), linear-gradient(-45deg, transparent 75%, #eab308 75%); background-size: 40px 40px; background-position: 0 0, 0 20px, 20px -20px, -20px 0px; }
         
         /* New Lobby Screen Styles */
@@ -826,8 +824,8 @@
 
         joystickZone.addEventListener('touchstart', (e) => {
             e.preventDefault(); e.stopPropagation();
-            joystick.active = true; let touch = e.changedTouches[0];
-            joystick.origX = touch.clientX; joystick.origY = touch.clientY;
+            joystick.active = true; let touch = e.changedTouches[0]; let rect = joystickZone.getBoundingClientRect();
+            joystick.origX = rect.left + rect.width / 2; joystick.origY = rect.top + rect.height / 2;
             updateJoystick(touch.clientX, touch.clientY);
         }, {passive: false});
         joystickZone.addEventListener('touchmove', (e) => {
@@ -850,9 +848,9 @@
             joystick.dx = dx; joystick.dy = dy; joystick.normX = dx / maxDist; joystick.normY = dy / maxDist;
         }
 
-        const handleActionDown = (e) => { if (typeof canAimPass === 'function' && canAimPass()) return; if(e) { e.preventDefault(); e.stopPropagation(); } keys['Space'] = true; actionBtn.classList.add('active-touch'); };
-        const handleActionMove = (e) => { if (isAimingPass) return; if(e) { e.preventDefault(); e.stopPropagation(); } };
-        const handleActionUp = (e) => { if (isAimingPass) return; if(e) { e.preventDefault(); e.stopPropagation(); } keys['Space'] = false; actionBtn.classList.remove('active-touch'); };
+        const handleActionDown = (e) => { if(e) { e.preventDefault(); e.stopPropagation(); } keys['Space'] = true; actionBtn.classList.add('active-touch'); };
+        const handleActionMove = (e) => { if(e) { e.preventDefault(); e.stopPropagation(); } };
+        const handleActionUp = (e) => { if(e) { e.preventDefault(); e.stopPropagation(); } keys['Space'] = false; actionBtn.classList.remove('active-touch'); };
         actionBtn.addEventListener('touchstart', handleActionDown, {passive: false}); actionBtn.addEventListener('touchmove', handleActionMove, {passive: false}); actionBtn.addEventListener('touchend', handleActionUp); actionBtn.addEventListener('touchcancel', handleActionUp);
 
         const qpTeams = [
@@ -1125,10 +1123,9 @@
 
         window.updateQuickPlayUI = function() {
             let awayTeam = qpTeams[qpState.awayIdx]; let homeTeam = qpTeams[qpState.homeIdx];
-            const showRatings = idx => { if (window._careerGame && window.getTeamOvr) { const ov = window.getTeamOvr(idx); return `OVR: ${ov} | SEASON MATCHUP`; } const t = qpTeams[idx]; return `OVR: ${t.ovr} | OFF: ${t.off} | DEF: ${t.def}`; };
-            document.getElementById('away-team-name').textContent = awayTeam.name; document.getElementById('away-team-stats').textContent = showRatings(qpState.awayIdx);
+            document.getElementById('away-team-name').textContent = awayTeam.name; document.getElementById('away-team-stats').textContent = `OVR: ${awayTeam.ovr} | OFF: ${awayTeam.off} | DEF: ${awayTeam.def}`;
             document.getElementById('away-helmet-container').innerHTML = getHelmetSVG(awayTeam.c1, awayTeam.c2, awayTeam.name.charAt(0));
-            document.getElementById('home-team-name').textContent = homeTeam.name; document.getElementById('home-team-stats').textContent = showRatings(qpState.homeIdx);
+            document.getElementById('home-team-name').textContent = homeTeam.name; document.getElementById('home-team-stats').textContent = `OVR: ${homeTeam.ovr} | OFF: ${homeTeam.off} | DEF: ${homeTeam.def}`;
             document.getElementById('home-helmet-container').innerHTML = getHelmetSVG(homeTeam.c1, homeTeam.c2, homeTeam.name.charAt(0));
             
             let btnAway = document.getElementById('btn-play-away'); let btnHome = document.getElementById('btn-play-home');
@@ -1617,9 +1614,7 @@
                 let pTeam = qpState.playerSide === 'AWAY' ? qpTeams[qpState.awayIdx] : qpTeams[qpState.homeIdx]; let cTeam = qpState.playerSide === 'AWAY' ? qpTeams[qpState.homeIdx] : qpTeams[qpState.awayIdx];
                 
                 quickPlayConfig = { playerColors: { primary: pTeam.c1, secondary: pTeam.c2 }, cpuColors: { primary: cTeam.c1, secondary: cTeam.c2 }, quarterLength: timeOptions[qpState.timeIdx] };
-                const cpuIdx = qpState.playerSide === 'AWAY' ? qpState.homeIdx : qpState.awayIdx;
-                const cpuOvr = window._careerGame && window.getTeamOvr ? window.getTeamOvr(cpuIdx) : cTeam.ovr;
-                cpuDifficulty = computeCpuDifficulty(cpuOvr);
+                cpuDifficulty = computeCpuDifficulty(cTeam.ovr);
                 
                 document.getElementById('sb-label-you').textContent = pTeam.name.substring(0, 3).toUpperCase(); document.getElementById('sb-label-cpu').textContent = cTeam.name.substring(0, 3).toUpperCase();
                 document.querySelector('#scoreboard .sb-team.you').style.backgroundColor = hexToRgba(pTeam.c1, 0.5); document.querySelector('#scoreboard .sb-team.cpu').style.backgroundColor = hexToRgba(cTeam.c1, 0.5);
@@ -1874,7 +1869,7 @@
         window.addEventListener('mousemove', (e) => { if (isAimingPass && aimPointerId === 'mouse') { aimCurrentX = e.clientX; aimCurrentY = e.clientY; updatePassProjection(); } });
         window.addEventListener('mouseup', (e) => { if (isAimingPass && aimPointerId === 'mouse') { isAimingPass = false; aimPointerId = null; executePass(); } });
         window.addEventListener('touchstart', (e) => {
-            if (!canAimPass()) return; if (e.target.closest('#joystick-zone') || e.target.closest('.retro-btn') || e.target.closest('#btn-pause')) return;
+            if (!canAimPass()) return; if (e.target.closest('#joystick-zone') || e.target.closest('#action-btn') || e.target.closest('.retro-btn') || e.target.closest('#btn-pause')) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
                 let touch = e.changedTouches[i];
                 if (touch.clientX > window.innerWidth / 2 && aimPointerId === null) { isAimingPass = true; aimPointerId = touch.identifier; aimStartX = touch.clientX; aimStartY = touch.clientY; aimCurrentX = aimStartX; aimCurrentY = aimStartY; updatePassProjection(); break; }
@@ -2949,11 +2944,11 @@
                     } else if ((gameState === 'BALL_IN_AIR' || gameState === 'BALL_LOOSE') && !(data_isKick())) {
                         const dd = window._mpBallDest; // lead toward where the pass is going so the landing spot stays in view
                         tx = ball.x + (dd ? (dd[0] - ball.x) * 0.3 : 0); ty = ball.y + (dd ? (dd[1] - ball.y) * 0.3 : 0);
-                        tz = camera.baseZoom * 1.10; kPos = 0.2; kZoom = 0.075;
+                        tz = camera.baseZoom; kPos = 0.2; kZoom = 0.06;
                     } else if ((gameState === 'PRE_SNAP' || gameState === 'PLAYING') && p2Player) {
                         let focus = p2Player;
-                        if (gameState === 'PLAYING') { const bc = players.find(p => p.hasBall); if (bc) focus = bc; }
-                        tx = focus.x; ty = focus.y; tz = gameState === 'PLAYING' && focus.hasBall ? camera.baseZoom * 1.17 : camera.baseZoom; kPos = 0.25; kZoom = 0.08;
+                        if (gameState === 'PLAYING' && offenseDirection === 1) { const bc = players.find(p => p.hasBall); if (bc) focus = bc; }
+                        tx = focus.x; ty = focus.y; tz = camera.baseZoom; kPos = 0.25; kZoom = 0.08;
                     }
                     if (tx !== undefined) {
                         if (Math.abs(tx - camera.currentX) > 30 || Math.abs(ty - camera.currentY) > 30) { camera.currentX = tx; camera.currentY = ty; }
@@ -3417,28 +3412,10 @@
                 camera.zoom += (desiredZoom - camera.zoom) * 0.08; 
             } 
             else if (isAimingPass) {
-                let spreadX = projectedDestX - player.x; let spreadY = projectedDestY - player.y; camera.target = { x: player.x + spreadX * 0.4, y: player.y + spreadY * 0.4 };
-                const desiredZoom = camera.baseZoom; camera.zoom += (desiredZoom - camera.zoom) * 0.08;
-            }
-            else if (gameState === 'BALL_IN_AIR' && isPassing && !isFieldGoalPlay) {
-                // Stay with the football after a throw and ease in slightly so its flight is easier to read.
-                camera.target = ball;
-                const desiredZoom = camera.baseZoom * 1.10;
-                camera.zoom += (desiredZoom - camera.zoom) * 0.09;
-            }
-            else if (gameState === 'PLAYING' && !isPassing) {
-                // Follow the actual runner, not only the original QB/player reference. This covers QB scrambles,
-                // designed RB runs, and kick/punt returns, with a gentle close-up during live carries.
-                const liveCarrier = players.find(p => p.hasBall);
-                if (liveCarrier) {
-                    camera.target = liveCarrier;
-                    const desiredZoom = camera.baseZoom * 1.17;
-                    camera.zoom += (desiredZoom - camera.zoom) * 0.09;
-                } else {
-                    camera.target = player || camera.target;
-                    if (Math.abs(camera.zoom - camera.baseZoom) > 0.01) camera.zoom += (camera.baseZoom - camera.zoom) * 0.08;
-                }
-            }
+                let spreadX = projectedDestX - player.x; let spreadY = projectedDestY - player.y; let spread = Math.sqrt(spreadX * spreadX + spreadY * spreadY); camera.target = { x: player.x + spreadX * 0.4, y: player.y + spreadY * 0.4 };
+                let desiredZoom = camera.baseZoom; camera.zoom += (desiredZoom - camera.zoom) * 0.08;
+            } 
+            else if (gameState === 'PLAYING' && offenseDirection === 1 && !isPassing) { camera.target = player; if (Math.abs(camera.zoom - camera.baseZoom) > 0.01) camera.zoom += (camera.baseZoom - camera.zoom) * 0.08; } 
             else { if (Math.abs(camera.zoom - camera.baseZoom) > 0.01) camera.zoom += (camera.baseZoom - camera.zoom) * 0.08; }
 
             if (camera.target) {
@@ -4218,56 +4195,14 @@ const PXS = (function () {
         }
 
         function drawGoalpost(yardX) {
-            const scale = camera.zoom;
-            const base = toScreen(yardX, 0);
-            const crossbarHeight = scale * 4.8;
-            const uprightHeight = scale * 8.3;
-            const span = Math.max(46, scale * 7.0 * 0.66);
-            const tube = Math.max(5, scale * 0.34);
-            const bevel = Math.max(2, tube * 0.32);
-            const mastBase = { x: base.x - span * 0.035, y: base.y - scale * 0.1 };
-            const mastTop = { x: base.x + span * 0.06, y: base.y - crossbarHeight };
-            const left = { x: base.x - span * 0.50, y: base.y - crossbarHeight + scale * 0.13 };
-            const right = { x: base.x + span * 0.50, y: base.y - crossbarHeight - scale * 0.13 };
-            const leftTop = { x: left.x - scale * 0.12, y: left.y - uprightHeight };
-            const rightTop = { x: right.x + scale * 0.12, y: right.y - uprightHeight };
+            let scale = camera.zoom; let crossbarHeight = scale * 5.0; let uprightHeight = scale * 10.0;  let postThickness = Math.max(4, scale * 0.4); let widthYards = 7.0; 
+            let base = toScreen(yardX, 0); let crossCenter = { x: base.x, y: base.y - crossbarHeight };
+            let leftGround = toScreen(yardX, -widthYards / 2); let rightGround = toScreen(yardX, widthYards / 2);
+            let crossLeft = { x: leftGround.x, y: leftGround.y - crossbarHeight }; let crossRight = { x: rightGround.x, y: rightGround.y - crossbarHeight };
+            let upLeft = { x: crossLeft.x, y: crossLeft.y - uprightHeight }; let upRight = { x: crossRight.x, y: crossRight.y - uprightHeight };
 
-            // Ground shadow and chunky anchoring plate help separate the post from the end zone.
-            ctx.save();
-            ctx.globalAlpha = 0.45;
-            ctx.fillStyle = '#050b12';
-            ctx.beginPath(); ctx.ellipse(base.x + scale * 0.5, base.y + scale * 0.25, span * 0.22, Math.max(3, scale * 0.26), 0, 0, Math.PI * 2); ctx.fill();
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = '#303744';
-            ctx.beginPath(); ctx.moveTo(base.x - scale * 0.75, base.y); ctx.lineTo(base.x + scale * 1.0, base.y - scale * 0.18); ctx.lineTo(base.x + scale * 1.25, base.y + scale * 0.28); ctx.lineTo(base.x - scale * 0.5, base.y + scale * 0.45); ctx.closePath(); ctx.fill();
-            ctx.fillStyle = '#8993a0';
-            ctx.beginPath(); ctx.moveTo(base.x - scale * 0.55, base.y); ctx.lineTo(base.x + scale * 0.78, base.y - scale * 0.13); ctx.lineTo(base.x + scale * 0.88, base.y + scale * 0.08); ctx.lineTo(base.x - scale * 0.4, base.y + scale * 0.2); ctx.closePath(); ctx.fill();
-
-            const segments = [[mastBase, mastTop], [left, right], [left, leftTop], [right, rightTop]];
-            function pipe(a, b) {
-                const dx = b.x - a.x, dy = b.y - a.y;
-                const len = Math.max(0.001, Math.hypot(dx, dy));
-                const nx = -dy / len, ny = dx / len;
-                const offX = bevel * 0.8, offY = bevel * 1.05;
-                const pts = (cx, cy, half) => [
-                    { x: cx + nx * half, y: cy + ny * half },
-                    { x: cx - nx * half, y: cy - ny * half }
-                ];
-                const pa = pts(a.x, a.y, tube * 0.5), pb = pts(b.x, b.y, tube * 0.5);
-                // Dark offset side face (depth) and black outer silhouette.
-                ctx.fillStyle = '#111827';
-                ctx.beginPath(); ctx.moveTo(pa[0].x, pa[0].y); ctx.lineTo(pb[0].x, pb[0].y); ctx.lineTo(pb[0].x + offX, pb[0].y + offY); ctx.lineTo(pa[0].x + offX, pa[0].y + offY); ctx.lineTo(pa[1].x + offX, pa[1].y + offY); ctx.lineTo(pb[1].x + offX, pb[1].y + offY); ctx.lineTo(pb[1].x, pb[1].y); ctx.lineTo(pa[1].x, pa[1].y); ctx.closePath(); ctx.fill();
-                ctx.strokeStyle = '#0b0f18'; ctx.lineWidth = tube + 3; ctx.lineCap = 'square'; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-                ctx.strokeStyle = '#b77908'; ctx.lineWidth = tube; ctx.beginPath(); ctx.moveTo(a.x + 0.5, a.y + 0.5); ctx.lineTo(b.x + 0.5, b.y + 0.5); ctx.stroke();
-                ctx.strokeStyle = '#facc15'; ctx.lineWidth = Math.max(2, tube * 0.72); ctx.beginPath(); ctx.moveTo(a.x - bevel * 0.25, a.y - bevel * 0.25); ctx.lineTo(b.x - bevel * 0.25, b.y - bevel * 0.25); ctx.stroke();
-                ctx.strokeStyle = '#fff0a6'; ctx.lineWidth = Math.max(1, tube * 0.20); ctx.beginPath(); ctx.moveTo(a.x - tube * 0.18, a.y - tube * 0.18); ctx.lineTo(b.x - tube * 0.18, b.y - tube * 0.18); ctx.stroke();
-            }
-            // Rear-most support first; crossbar/uprights layer over it for a readable 3-D silhouette.
-            pipe(mastBase, mastTop);
-            pipe(left, right);
-            pipe(left, leftTop);
-            pipe(right, rightTop);
-            ctx.restore();
+            function drawPipes(thickness, color) { ctx.lineWidth = thickness; ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(crossCenter.x, crossCenter.y); ctx.moveTo(crossLeft.x, crossLeft.y); ctx.lineTo(crossRight.x, crossRight.y); ctx.moveTo(crossLeft.x, crossLeft.y); ctx.lineTo(upLeft.x, upLeft.y); ctx.moveTo(crossRight.x, crossRight.y); ctx.lineTo(upRight.x, upRight.y); ctx.stroke(); }
+            drawPipes(postThickness + 4, '#000000'); drawPipes(postThickness, '#eab308');
         }
 
         function drawPlayRoute(pathBuilderFn, color, PPY) {
@@ -5617,44 +5552,15 @@ const PXS = (function () {
 
             // ================= rosters: your school + every other school =================
             const rosterCache = {};
-            // Your starting team is rough on purpose: the plan is to build it up (packs now, training later).
+            function rosterFor(idx) { if (career && career.roster && idx === career.teamIdx) return career.roster; return rosterCache[idx] || (rosterCache[idx] = buildRoster(idx, 'cpu')); }
+            // your starting team is rough on purpose: the plan is to build it up (packs now, training later)
             const START_TEAM = { off: 56, def: 56, ovr: 56 };
             function ensureRoster() { if (career && !career.roster) career.roster = buildRoster(career.teamIdx, career.coachName, START_TEAM); return career && career.roster; }
             function ratingsOf(r) { const avg = g => { const l = r.filter(p => p.grp === g); return Math.round(l.reduce((s, p) => s + p.ovr, 0) / l.length); }; const off = avg('off'), def = avg('def'), k = avg('st'); return { off, def, st: k, ovr: Math.round(off * 0.45 + def * 0.45 + k * 0.10) }; }
-            function scaledLeagueOvr(idx, referenceOvr) {
-                const all = qpTeams.map(t => t.ovr), baseMin = Math.min(...all), baseMax = Math.max(...all);
-                const lo = Math.max(40, Math.round(referenceOvr * 0.88));
-                const hi = Math.min(99, Math.round(referenceOvr * 1.18));
-                const fraction = baseMax === baseMin ? 0.5 : (qpTeams[idx].ovr - baseMin) / (baseMax - baseMin);
-                return Math.max(40, Math.min(99, Math.round(lo + (hi - lo) * fraction)));
-            }
-            function balancedRosterFor(idx, referenceOvr) {
-                const targetOvr = scaledLeagueOvr(idx, referenceOvr);
-                const t = qpTeams[idx], delta = targetOvr - t.ovr;
-                const target = { ovr: targetOvr, off: clamp(t.off + delta, 35, 99), def: clamp(t.def + delta, 35, 99) };
-                const cacheKey = `season-v3-${idx}-${referenceOvr}-${targetOvr}-${target.off}-${target.def}`;
-                return rosterCache[cacheKey] || (rosterCache[cacheKey] = buildRoster(idx, cacheKey, target));
-            }
-            function rosterFor(idx) {
-                if (career && idx === career.teamIdx) return ensureRoster();
-                if (career) {
-                    // Freeze the opponent-strength reference at the start of a season, so upgrades affect the NEXT schedule.
-                    const referenceOvr = career.season && Number.isFinite(career.season.balanceOvr)
-                        ? career.season.balanceOvr : ratingsOf(ensureRoster()).ovr;
-                    return balancedRosterFor(idx, referenceOvr);
-                }
-                return rosterCache[idx] || (rosterCache[idx] = buildRoster(idx, 'cpu'));
-            }
             window.getTeamRatings = function () { return career && career.roster ? ratingsOf(career.roster) : null; };
             window.getTeamRoster = function (idx) { return rosterFor(idx); };
-            // Team OVRs shown in the job/selection list use the same scaled strength range as the season opponents.
-            // Before a coach is hired, assume the standard 56-OVR starting roster as the balance reference.
-            window.getTeamOvr = function (idx, coachName) {
-                if (coachName) return ratingsOf(buildRoster(idx, coachName, START_TEAM)).ovr;
-                if (career) return ratingsOf(rosterFor(idx)).ovr;
-                const preview = ratingsOf(buildRoster(idx, 'balance-preview', START_TEAM)).ovr;
-                return scaledLeagueOvr(idx, preview);
-            };
+            // overall of the roster a school actually has this season (CPU schools) or you'd start with (a school you could take over)
+            window.getTeamOvr = function (idx, coachName) { return ratingsOf(coachName ? buildRoster(idx, coachName, START_TEAM) : rosterFor(idx)).ovr; };
 
             // ================= DOM =================
             const body = document.body;
@@ -6051,7 +5957,7 @@ const PXS = (function () {
                 const minOvr = Math.max(40, Math.round(myOvr * 0.88));
                 const maxOvr = Math.min(99, Math.round(myOvr * 1.18));
                 const ratedOpponents = others.map(i => {
-                    const ovr = ratingsOf(balancedRosterFor(i, myOvr)).ovr;
+                    const ovr = ratingsOf(rosterFor(i)).ovr;
                     return { i, ovr, gap: Math.abs(ovr - myOvr) };
                 });
                 const inBand = shuf(ratedOpponents.filter(x => x.ovr >= minOvr && x.ovr <= maxOvr));
@@ -6080,24 +5986,23 @@ const PXS = (function () {
                     return { games: best.map(([a, b]) => (Math.random() < 0.5 ? { home: a, away: b, played: false } : { home: b, away: a, played: false })), bye };
                 });
                 const stand = {}; for (let i = 0; i < N; i++) stand[i] = { w: 0, l: 0, t: 0, pf: 0, pa: 0 };
-                career.season = { num, week: 0, sched, league, stand, balanceVersion: 3, balanceOvr: myOvr };
+                career.season = { num, week: 0, sched, league, stand, balanceVersion: 1 };
                 return career.season;
             }
             function seasonOf() {
                 if (!career.season) return newSeason(1);
                 const existing = career.season;
-                // Migrate a saved season that has not started yet so the season-locked scaled roster ratings take effect immediately.
-                if (existing.balanceVersion !== 3 && existing.week === 0 && Array.isArray(existing.sched) && !existing.sched.some(g => g.result)) {
+                // Migrate a saved season that has not started yet so the new rating-based
+                // opponent selection takes effect immediately, not only in future seasons.
+                if (existing.balanceVersion !== 1 && existing.week === 0 && Array.isArray(existing.sched) && !existing.sched.some(g => g.result)) {
                     return newSeason(existing.num || 1);
                 }
-                // A season already in progress keeps its schedule and freezes its current balance reference.
-                if (!Number.isFinite(existing.balanceOvr)) existing.balanceOvr = ratingsOf(ensureRoster()).ovr;
-                existing.balanceVersion = 3;
+                if (existing.balanceVersion == null) existing.balanceVersion = 1;
                 return existing;
             }
             function simScore(off, oppDef, home) { const mean = clamp(21 + (off - oppDef) * 0.7 + (home ? 1.5 : 0), 7, 45); const td = Math.max(0, Math.round(mean * 0.75 / 7 + gauss() * 1.15)), fg = Math.max(0, Math.round(0.9 + gauss() * 0.8)); return td * 7 + fg * 3; }
             function simLeagueGame(g) {
-                const H = ratingsOf(rosterFor(g.home)), A = ratingsOf(rosterFor(g.away)); let hs = simScore(H.off, A.def, true), as = simScore(A.off, H.def, false);
+                const H = qpTeams[g.home], A = qpTeams[g.away]; let hs = simScore(H.off, A.def, true), as = simScore(A.off, H.def, false);
                 if (hs === as) { const pH = 1 / (1 + Math.exp(-(H.ovr - A.ovr) / 10)); const pts = Math.random() < 0.6 ? 3 : 7; if (Math.random() < pH) hs += pts; else as += pts; }
                 g.hs = hs; g.as = as; g.played = true; return g;
             }
