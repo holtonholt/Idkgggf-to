@@ -4418,7 +4418,7 @@ const PXS = (function () {
 
         // ===== PIXEL ROUTE ART: play routes painted on the turf =====
         // Palette pulled from the field: warm sunlit gold (like the first-down line) on a deep turf-green outline.
-        const ROUTE_PAL = { out: '#0a2a17', shade: '#c98a14', fill: '#f7d04a', hi: '#fff3b6', shadow: 'rgba(4,28,12,0.38)' };
+        const ROUTE_PAL = { fill: '#eef6ea', out: 'rgba(10,40,20,0.55)' };   // soft chalk white (matches the yard lines) with a faint turf-green edge
         let _routeCanvas = null, _routeKey = '';
         // where every eligible receiver / the runner goes, in yards, computed from the real route code the players run
         function computeRoutePaths(play) {
@@ -4451,60 +4451,35 @@ const PXS = (function () {
         }
         function getRouteLayer(play) {
             const paths = computeRoutePaths(play); if (!paths.length) return null;
-            const phase = Math.floor(performance.now() / 110) % 8;
-            const key = play + '|' + offenseDirection + '|' + lineOfScrimmage + '|' + phase + '|' + paths.map(q => q.length + ':' + Math.round(q[0][0] * 4) + ',' + Math.round(q[0][1] * 4) + ',' + Math.round(q[q.length - 1][0] * 4) + ',' + Math.round(q[q.length - 1][1] * 4)).join(';');
+            const key = play + '|' + offenseDirection + '|' + lineOfScrimmage + '|' + paths.map(q => q.length + ':' + Math.round(q[0][0] * 4) + ',' + Math.round(q[0][1] * 4) + ',' + Math.round(q[q.length - 1][0] * 4) + ',' + Math.round(q[q.length - 1][1] * 4)).join(';');
             if (_routeCanvas && key === _routeKey) return _routeCanvas;
             const PW = Math.round(FIELD_LENGTH_YARDS * FPXX), PH = Math.round(FIELD_WIDTH_YARDS * FPXY);
             if (!_routeCanvas) { _routeCanvas = document.createElement('canvas'); _routeCanvas.width = PW; _routeCanvas.height = PH; }
-            const g = _routeCanvas.getContext('2d'); g.clearRect(0, 0, PW, PH); g.imageSmoothingEnabled = false;
-            const solid = new Map();   // pixel -> colour
-            const setPx = (x, y, c, force) => { if (x < 0 || y < 0 || x >= PW || y >= PH) return; const k = y * PW + x; if (force || !solid.has(k)) solid.set(k, c); };
-            const toPx = (xy) => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY];
+            const g = _routeCanvas.getContext('2d'); g.clearRect(0, 0, PW, PH);
+            const solid = new Set();
+            const setPx = (x, y) => { if (x >= 0 && y >= 0 && x < PW && y < PH) solid.add(y * PW + x); };
             paths.forEach(path => {
-                const pp = path.map(toPx), walk = [];
+                const pp = path.map(xy => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY]), walk = [];
                 for (let i = 1; i < pp.length; i++) {
                     const [x0, y0] = pp[i - 1], [x1, y1] = pp[i], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2));
                     for (let j = (i === 1 ? 0 : 1); j <= n; j++) walk.push([x0 + (x1 - x0) * j / n, y0 + (y1 - y0) * j / n]);
                 }
                 if (walk.length < 4) return;
-                // 2px-thick chalk body: bright top row, darker bottom row (bevel), with a marching highlight showing the direction of the run
-                const body = new Map();
-                walk.forEach((w, i) => {
-                    const bx = Math.round(w[0] - 0.5), by = Math.round(w[1] - 0.5);
-                    [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([dx, dy]) => {
-                        const k = (by + dy) * PW + (bx + dx); const cur = body.get(k);
-                        const top = dy === 0; if (!cur || (cur.shade && top)) body.set(k, { x: bx + dx, y: by + dy, i, shade: !top });
-                    });
-                });
-                body.forEach(v => {
-                    let c = v.shade ? ROUTE_PAL.shade : ROUTE_PAL.fill;
-                    if (!v.shade && ((Math.floor(v.i / 3) - phase + 64) % 8) < 2) c = ROUTE_PAL.hi;
-                    setPx(v.x, v.y, c, true);
-                });
-                // starting nub (a little paint dot where the player lines up)
-                const [sx, sy] = [Math.round(walk[0][0]), Math.round(walk[0][1])];
-                for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) setPx(sx + dx, sy + dy, (dx === 0 && dy === 0) ? ROUTE_PAL.hi : (dy === 1 ? ROUTE_PAL.shade : ROUTE_PAL.fill), true);
-                // blocky arrowhead on the end of the route
+                // thin 1px line
+                walk.forEach(w => setPx(Math.floor(w[0]), Math.floor(w[1])));
+                // small pixel arrowhead
                 const n = walk.length, e = walk[n - 1], b0 = walk[Math.max(0, n - 9)];
                 let dx = e[0] - b0[0], dy = e[1] - b0[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-                const tx = e[0] + dx * 3.2, ty = e[1] + dy * 3.2, px = -dy, py = dx, HL = 7.5;
-                for (let yy = Math.floor(ty - HL - 2); yy <= Math.ceil(ty + HL + 2); yy++) for (let xx = Math.floor(tx - HL - 2); xx <= Math.ceil(tx + HL + 2); xx++) {
+                const tx = e[0] + dx * 1.5, ty = e[1] + dy * 1.5, px = -dy, py = dx, HL = 4.5;
+                for (let yy = Math.floor(ty - HL - 1); yy <= Math.ceil(ty + HL + 1); yy++) for (let xx = Math.floor(tx - HL - 1); xx <= Math.ceil(tx + HL + 1); xx++) {
                     const qx = xx + 0.5 - tx, qy = yy + 0.5 - ty, u = -(qx * dx + qy * dy), v = qx * px + qy * py;
-                    if (u < -0.2 || u > HL || Math.abs(v) > 0.3 + u * 0.62) continue;
-                    const cu = u - HL * 0.45, light = (qx * 0.45 + qy * 0.9);
-                    let c = ROUTE_PAL.fill; if (Math.abs(v) < 0.8 && u < HL * 0.6) c = ROUTE_PAL.hi; else if (light > 1.6 + (cu < 0 ? 0 : 0.4)) c = ROUTE_PAL.shade;
-                    setPx(xx, yy, c, true);
+                    if (u >= -0.2 && u <= HL && Math.abs(v) <= 0.2 + u * 0.55) setPx(xx, yy);
                 }
             });
-            // outline (4-neighbour, deep turf green) and a soft drop shadow so the paint feels pressed into the grass
             const outline = new Set();
-            solid.forEach((c, k) => { const x = k % PW, y = (k - x) / PW; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ax, ay]) => { const nx = x + ax, ny = y + ay; if (nx < 0 || ny < 0 || nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk)) outline.add(nk); }); });
-            const shadow = new Set();
-            const sh = k => { const x = k % PW, y = (k - x) / PW, nx = x + 1, ny = y + 1; if (nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk) && !outline.has(nk)) shadow.add(nk); };
-            solid.forEach((c, k) => sh(k)); outline.forEach(k => sh(k));
-            g.fillStyle = ROUTE_PAL.shadow; shadow.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
+            solid.forEach(k => { const x = k % PW, y = (k - x) / PW; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ax, ay]) => { const nx = x + ax, ny = y + ay; if (nx < 0 || ny < 0 || nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk)) outline.add(nk); }); });
             g.fillStyle = ROUTE_PAL.out; outline.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
-            solid.forEach((c, k) => { const x = k % PW; g.fillStyle = c; g.fillRect(x, (k - x) / PW, 1, 1); });
+            g.fillStyle = ROUTE_PAL.fill; solid.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
             _routeKey = key; return _routeCanvas;
         }
 
@@ -4951,7 +4926,7 @@ const PXS = (function () {
                     // Routes are painted INTO the field's own pixel grid (same pixel size as the turf), so they read as
                     // chalk/paint on the grass and sit underneath every player sprite drawn afterwards.
                     const rl = getRouteLayer(currentTeamPlay);
-                    if (rl) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.97; ctx.drawImage(rl, 0, fieldTop, 120 * PPY, fieldHeight); ctx.restore(); }
+                    if (rl) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.9; ctx.drawImage(rl, 0, fieldTop, 120 * PPY, fieldHeight); ctx.restore(); }
                 }
             }
 
