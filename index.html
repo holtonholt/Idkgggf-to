@@ -2135,7 +2135,7 @@
                 return; // Let the host actually calculate and simulate the throw
             }
 
-            let qb = players.find(p => p.hasBall); if (!qb) return;
+            let qb = players.find(p => p.hasBall); if (!qb || qb.snapT > 0) return;
             let dragDist = Math.sqrt(Math.pow(aimStartX - aimCurrentX, 2) + Math.pow(aimStartY - aimCurrentY, 2)); if (dragDist < 15) return; 
             qb.hasBall = false; ball.isBadPass = false; ball.destX = projectedDestX; ball.destY = projectedDestY; let hangTime = projectedHangTime;
             { const _sc = StatsBridge.scatter(qb, Math.hypot(ball.destX - qb.x, ball.destY - qb.y)); if (_sc > 0) { const _a = Math.random() * Math.PI * 2, _r = Math.sqrt(Math.random()) * _sc; ball.destX += Math.cos(_a) * _r; ball.destY += Math.sin(_a) * _r; } }
@@ -2607,7 +2607,7 @@
         function updateHandoff() {
             const hs = handoffState; if (!hs) return;
             if (gameState !== 'PLAYING' || !hs.qb.hasBall || hs.rb.hasBall) { handoffState = null; return; }
-            hs.t++; const dir = offenseDirection, qb = hs.qb, rb = hs.rb;
+            if (hs.qb.snapT > 0) return; hs.t++; const dir = offenseDirection, qb = hs.qb, rb = hs.rb;
             qb.animTimer = 0; qb.facing = dir;
             const tx = qb.x + dir * 0.5, ty = qb.y + (rb.y >= qb.y ? 0.4 : -0.4), dx = tx - rb.x, dy = ty - rb.y, dist = Math.hypot(dx, dy) || 1;
             const step = Math.min(dist, rb.speed * 1.15 * worldDirSpeedMul(dx, dy)); rb.x += (dx / dist) * step; rb.y += (dy / dist) * step; rb.facing = dir; rb.animTimer += 0.3;
@@ -2657,7 +2657,7 @@
 
             if (!isPlayerOffense && (isMpHost || !isMultiplayer)) {
                 if (!isMultiplayer) {
-                    setTimeout(() => { if (gameState === 'PRE_SNAP' && !isMultiplayer) { gameState = 'PLAYING'; let qb = players.find(p => p.isQB); if (qb) qb.hasBall = true; hud.innerHTML = ""; hideUI(); } }, 2500); 
+                    setTimeout(() => { if (gameState === 'PRE_SNAP' && !isMultiplayer) { gameState = 'PLAYING'; let qb = players.find(p => p.isQB); if (qb) { qb.hasBall = true; startSnap(qb); } hud.innerHTML = ""; hideUI(); } }, 2500); 
                 }
             }
         }
@@ -2669,7 +2669,12 @@
             const foes = players.filter(e => e.isCPU !== p.isCPU && e.isLineman && !taken.has(e)).sort((a, b) => Math.abs(a.y - p.y) - Math.abs(b.y - p.y));
             return (p._blkMan = foes[0] || null);
         }
-        function snapBall() { gameState = 'PLAYING'; isAimingPass = false; aimPointerId = null; players.forEach(p => { p.tackleTimer = 0; }); let qb = players.find(p => p.isQB && (offenseDirection === -1 ? !p.isCPU : p.isCPU)); if (qb) qb.hasBall = true; hud.innerHTML = ""; hideUI(); mainClockStarted = true;
+        function startSnap(qb) {
+            if (!qb) return;
+            const d = Math.hypot(qb.x - ball.x, qb.y - ball.y);
+            qb.snapDur = Math.max(9, Math.min(24, Math.round(6 + d * 1.8))); qb.snapT = qb.snapDur; qb.snapFrom = { x: ball.x, y: ball.y };
+        }
+        function snapBall() { gameState = 'PLAYING'; isAimingPass = false; aimPointerId = null; players.forEach(p => { p.tackleTimer = 0; }); let qb = players.find(p => p.isQB && (offenseDirection === -1 ? !p.isCPU : p.isCPU)); if (qb) { qb.hasBall = true; startSnap(qb); } hud.innerHTML = ""; hideUI(); mainClockStarted = true;
             handoffState = null; const _pl = (offenseDirection === -1) ? selectedPlay : cpuSelectedPlay;
             if (qb && _pl && !isPassPlay(_pl) && _pl !== 'PUNT' && _pl !== 'FIELD_GOAL') { const rb = players.find(p => p.isRB && p.isCPU === qb.isCPU); if (rb) handoffState = { qb, rb, t: 0 }; } }
 
@@ -3111,7 +3116,7 @@
 
             // Remote Player Pass Handling
             const mpPass = window._mpPendingPass || (remoteInput && remoteInput.pass);
-            if (isMultiplayer && isMpHost && mpPass && p2Player && p2Player.isQB && p2Player.hasBall && gameState === 'PLAYING') {
+            if (isMultiplayer && isMpHost && mpPass && p2Player && p2Player.isQB && p2Player.hasBall && !(p2Player.snapT > 0) && gameState === 'PLAYING') {
                 let qb = p2Player;
                 qb.hasBall = false; ball.isBadPass = false; ball.destX = mpPass.x; ball.destY = mpPass.y; let hangTime = Math.max(20, mpPass.ht || 45);
                 ball.vx = (ball.destX - ball.x) / hangTime; ball.vy = (ball.destY - ball.y) / hangTime;
@@ -3349,7 +3354,7 @@
                                     if (p.pocketPhase === undefined) p.pocketPhase = Math.random() * Math.PI * 2; p.pocketPhase += 0.04; p.y += Math.sin(p.pocketPhase) * 0.04; p.animTimer += 0.15; cpuPassTimer--;
                                     if (!isPassing) {
                                         let _dec = cpuReadProgression(p, currentOffensePlay); let targetWR = _dec.target; if (_dec.tuck && !qbPastLOS(p)) { p.cpuScramble = 'RUN'; }
-                                        if (targetWR && _dec.throwNow) {
+                                        if (targetWR && _dec.throwNow && !(p.snapT > 0)) {
                                             p.hasBall = false; const _spot = cpuPassSpot(p, targetWR, currentOffensePlay); let hangTime = _spot.hang; let leadX = _spot.x; let leadY = _spot.y;
                                             let nearestRusher = players.filter(pl => pl.isCPU !== p.isCPU && !pl.isRef && !pl.isKicker).sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y) - Math.hypot(b.x-p.x,b.y-p.y))[0]; let underPressure = nearestRusher && Math.hypot(nearestRusher.x - p.x, nearestRusher.y - p.y) < 3.0; const _qd = StatsBridge.qbDiff(p); let cleanBadRate = Math.max(0.015, Math.min(0.3, 0.07 - _qd * 0.05)) + (p.cpuScramble ? 0.05 : 0); let pressureBadRate = Math.max(0.08, Math.min(0.8, 0.30 - _qd * 0.2)); ball.isBadPass = Math.random() < (underPressure ? pressureBadRate : cleanBadRate);
                                             if (ball.isBadPass) { let missDist = 3 + Math.random() * 5; let missAngle = Math.random() * Math.PI * 2; leadX += Math.cos(missAngle) * missDist; leadY += Math.sin(missAngle) * missDist; }
@@ -3402,6 +3407,12 @@
                     else if (gameState === 'PLAYING' && (ballCarrier.y <= -FIELD_WIDTH_YARDS/2 || ballCarrier.y >= FIELD_WIDTH_YARDS/2)) { ballCarrier.y = Math.max(-FIELD_WIDTH_YARDS/2, Math.min(FIELD_WIDTH_YARDS/2, ballCarrier.y)); endPlay("OUT OF BOUNDS"); }
                 }
 
+                { const sq = players.find(p => p.snapT > 0);   // the snap: ball travels center -> QB with a little arc
+                  if (sq) {
+                    if (gameState !== 'PLAYING') sq.snapT = 0; else sq.snapT--;
+                    const t = 1 - Math.max(0, sq.snapT) / sq.snapDur, f = sq.snapFrom || { x: ball.x, y: ball.y };
+                    ball.x = f.x + (sq.x - f.x) * t; ball.y = f.y + (sq.y - f.y) * t; ball.z = 0.4 + 0.6 * t + Math.sin(Math.PI * t) * 0.9;
+                  } }
                 if (gameState === 'TACKLED' && ballCarrier) {
                     ballCarrier.tackleTimer = (ballCarrier.tackleTimer || 0) + 1; let tt = ballCarrier.tackleTimer;
                     if (isIntroScene && introScriptState === 'SCRIPTED_TACKLE') { if (ballCarrier.x > 81.2) ballCarrier.x = 81.2; if (ballCarrier.x < 80.8) ballCarrier.x = 80.8; }
@@ -3592,8 +3603,18 @@ const PXS = (function () {
         shape(hx, uy, th, (lx, ly) => { const col = Math.floor(lx + 3), row = Math.floor(ly + 11); if (row < 0 || row > 5 || col < 0 || col > 6) return 0; const ch = map[row][col]; return ch === '.' ? 0 : (pal[ch] || 0); });
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
+        const tuck = !!o.hasBall && o.armA2 > -0.5;   // ball tucked in the crook of the front arm (dives still reach out with it)
+        if (tuck) {
+            const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th;
+            const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
+            const bx = Math.round(ex0 + 2.0), by = Math.round(ey0 + 1.6);
+            const BR = pack(180, 83, 9), SH = pack(120, 53, 15), WH = pack(250, 250, 250);
+            const row = (dy, c0, c1, c) => { for (let c_ = c0; c_ <= c1; c_++) put(bx + c_, by + dy, c); };
+            row(-2, -2, 2, BR); row(-1, -3, 3, BR); row(-1, -1, 1, WH); row(0, -3, 3, SH); row(1, -2, 2, SH);
+            flush(0);
+        }
         const fa = arm(o.armA2, o.armB2, 0);
-        if (o.hasBall) {
+        if (o.hasBall && !tuck) {
             const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
             const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15); const ca = Math.cos(ang), sa = Math.sin(ang);
             const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1));
@@ -4261,6 +4282,19 @@ const PXS = (function () {
             ctx.restore();
         }
 
+        function drawPixelShadow(wx, wy, rx, ry, PPY, color) {
+            // blocky oval made of field-sized pixels (world units): rx / ry are the half-sizes in world pixels
+            const cw = PPY / FPXX, ch = PPY / FPXY;
+            const nx = Math.max(1, Math.round(rx / cw)), ny = Math.max(1, Math.round(ry / ch));
+            const cx = Math.round((wx * PPY) / cw) * cw, cy = Math.round((wy * PPY) / ch) * ch;
+            ctx.fillStyle = color; ctx.beginPath();
+            for (let j = -ny + 1; j <= ny; j++) {
+                const k = (j - 0.5) / ny, hw = Math.max(1, Math.round(nx * Math.sqrt(Math.max(0, 1 - k * k))));
+                ctx.rect(cx - hw * cw, cy + (j - 1) * ch, hw * 2 * cw, ch);
+            }
+            ctx.fill();
+        }
+
         function drawPlayRoute(pathBuilderFn, color, PPY) {
             let baseW = Math.max(4, PPY * 0.2); ctx.lineCap = 'square'; ctx.lineJoin = 'miter'; ctx.setLineDash([]);
             ctx.lineWidth = baseW + Math.max(4, PPY * 0.2); ctx.strokeStyle = '#000000'; ctx.beginPath(); pathBuilderFn(); ctx.stroke();
@@ -4275,31 +4309,25 @@ const PXS = (function () {
         const TEAM_BOX = { x0: 40, x1: 80, d0: 1.0, d1: 8.8 }; // yards: along the field, and distance out from the sideline
         function buildSidelineTurf() {
             const Wd = FIELD_WIDTH_YARDS, AP = TURF_AP, XP = TURF_XP;
-            const PW = (FIELD_LENGTH_YARDS + 2 * XP) * FPX, PH = (Wd + 2 * AP) * FPX;
+            const PW = Math.round((FIELD_LENGTH_YARDS + 2 * XP) * FPXX), PH = Math.round((Wd + 2 * AP) * FPXY);
             const c = document.createElement('canvas'); c.width = PW; c.height = PH; const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
             let seed = 4242; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
             const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
             // mowing stripes continue from the field (every 5 yards), a touch darker than the field
             for (let yd = -XP; yd < FIELD_LENGTH_YARDS + XP; yd += 5) {
                 const alt = (((Math.floor((yd - 10) / 5)) % 2) + 2) % 2 === 0;
-                R((yd + XP) * FPX, 0, 5 * FPX, PH, alt ? '#238237' : '#1e722f');
+                R((yd + XP) * FPXX, 0, 5 * FPXX, PH, alt ? '#238237' : '#1e722f');
             }
             // fade darker the further from the field (stadium shadow) + subtle lighter band near the line
             const fade = (y0, y1, a0, a1) => { const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, 'rgba(0,20,0,' + (a0 * 0.62) + ')'); gr.addColorStop(1, 'rgba(0,20,0,' + (a1 * 0.62) + ')'); g.fillStyle = gr; g.fillRect(0, Math.min(y0, y1), PW, Math.abs(y1 - y0)); };
-            fade(AP * FPX, 0, 0.0, 0.42); fade((AP + Wd) * FPX, PH, 0.0, 0.42);
-            // grass speckle + little 2px blades, clustered so it reads as turf not noise
-            for (let i = 0; i < PW * PH * 0.2; i++) {
-                const x = Math.floor(rnd() * PW), y = Math.floor(rnd() * PH); const r = rnd();
-                g.fillStyle = r < 0.4 ? 'rgba(0,0,0,0.14)' : r < 0.8 ? 'rgba(255,255,255,0.07)' : 'rgba(170,255,140,0.12)';
-                g.fillRect(x, y, 1, 1); if (rnd() < 0.45) g.fillRect(x, y + 1, 1, 1);
-            }
-            for (let i = 0; i < 2600; i++) { // brighter tufts
+            fade(AP * FPXY, 0, 0.0, 0.42); fade((AP + Wd) * FPXY, PH, 0.0, 0.42);
+            // grass speckle: sparse single pixels, same grid as the field
+            for (let i = 0; i < PW * PH * 0.035; i++) {
                 const x = Math.floor(rnd() * PW), y = Math.floor(rnd() * PH);
-                g.fillStyle = 'rgba(150,235,110,0.20)'; g.fillRect(x, y, 1, 3); g.fillRect(x + 2, y + 1, 1, 2);
-                g.fillStyle = 'rgba(0,40,0,0.22)'; g.fillRect(x + 1, y + 1, 1, 2);
+                g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.09)'; g.fillRect(x, y, 1, 1);
             }
             // worn dirt where people actually stand: in front of the benches, the table, and the coaches
-            const toY = (sgn, d) => sgn > 0 ? (AP + Wd + d) * FPX : (AP - d) * FPX;
+            const toY = (sgn, d) => sgn > 0 ? (AP + Wd + d) * FPXY : (AP - d) * FPXY;
             const wear = (xyd, sgn, d, rx, ry, n) => { return;  for (let i = 0; i < n; i++) { const a = rnd() * 6.283, q = Math.sqrt(rnd()); const x = Math.round((xyd + XP) * FPX + Math.cos(a) * rx * FPX * q), y = Math.round(toY(sgn, d) + Math.sin(a) * ry * FPX * q); g.fillStyle = rnd() < 0.6 ? 'rgba(125,95,45,0.22)' : 'rgba(90,65,30,0.18)'; g.fillRect(x, y, 1 + (rnd() < 0.3 ? 1 : 0), 1); } };
             
 
@@ -4313,16 +4341,16 @@ const PXS = (function () {
                 const LINE = pk(240, 228, 222, 255), CURB = pk(232, 226, 218, 255), OUTC = pk(214, 205, 198, 255);
                 const shade = (c, f) => pk(Math.round((c & 255) * f), Math.round(((c >> 8) & 255) * f), Math.round(((c >> 16) & 255) * f), 255);
                 for (let py = 0; py < PH; py++) {
-                    const Y = py / FPX - AP - Wd / 2; const qy = Math.max(Math.abs(Y) - hy, 0);
+                    const Y = py / FPXY - AP - Wd / 2; const qy = Math.max(Math.abs(Y) - hy, 0);
                     for (let px = 0; px < PW; px++) {
-                        const X = px / FPX - XP; const qx = Math.max(Math.abs(X - FIELD_LENGTH_YARDS / 2) - hx, 0);
+                        const X = px / FPXX - XP; const qx = Math.max(Math.abs(X - FIELD_LENGTH_YARDS / 2) - hx, 0);
                         const dist = Math.sqrt(qx * qx + qy * qy), pr = dist - TK.Rc; let out = 0;
                         if (pr >= 0 && pr < trackW) {
-                            const lane = Math.floor(pr / TK.laneW), lp = (pr * FPX) % (TK.laneW * FPX), r = rnd();
+                            const lane = Math.floor(pr / TK.laneW), lp = (pr * FPXX) % (TK.laneW * FPXX), r = rnd();
                             let c = REDS[Math.floor(r * 5)];
                             if (lane < 2) c = shade(c, 0.93); else if (lane > 5) c = shade(c, 1.04);
                             if (lp < 1 || (pr < 0.25)) c = LINE;
-                            else if (Y > 0 && Math.abs(X - 95) < 0.3 && qx === 0) c = (Math.floor(pr * FPX / 2) % 2 ? LINE : pk(40, 30, 28, 255)); // finish line
+                            else if (Y > 0 && Math.abs(X - 95) < 0.3 && qx === 0) c = (Math.floor(pr * FPXX / 2) % 2 ? LINE : pk(40, 30, 28, 255)); // finish line
                             else if (r > 0.985) c = shade(c, 1.18); else if (r < 0.02) c = shade(c, 0.8);
                             out = c;
                         } else if (pr < 0 && pr >= -0.28) out = CURB;                         // inner curb
@@ -4330,7 +4358,7 @@ const PXS = (function () {
                         else if (pr >= trackW && pr < trackW + 0.28) out = OUTC;               // outer border
                         else if (pr >= trackW + 0.28) {                                       // outer grass fades into the stadium colour
                             const a1 = Math.min(1, (pr - trackW) / 8) * 0.5;
-                            const e = Math.min(px, PW - 1 - px, py, PH - 1 - py) / FPX, ea = Math.max(0, Math.min(1, 1 - e / 9));
+                            const e = Math.min(px / FPXX, (PW - 1 - px) / FPXX, py / FPXY, (PH - 1 - py) / FPXY), ea = Math.max(0, Math.min(1, 1 - e / 9));
                             const A = 1 - (1 - a1) * (1 - ea), we = (a1 + ea) > 0 ? ea / (a1 + ea) : 0; out = pk(Math.round(10 * we), Math.round(24 + 50 * we), Math.round(21 * we), Math.round(A * 255));
                         }
                         d32[py * PW + px] = out;
@@ -4339,14 +4367,14 @@ const PXS = (function () {
                 const tmp = document.createElement('canvas'); tmp.width = PW; tmp.height = PH; tmp.getContext('2d').putImageData(ov, 0, 0); g.drawImage(tmp, 0, 0);
             }
             // team-area box: players and coaches stay inside (white 2px lines, like the field)
-            const bx0 = (TEAM_BOX.x0 + XP) * FPX, bx1 = (TEAM_BOX.x1 + XP) * FPX;
+            const bx0 = (TEAM_BOX.x0 + XP) * FPXX, bx1 = (TEAM_BOX.x1 + XP) * FPXX;
             [-1, 1].forEach(sg => {
                 const yA = Math.round(toY(sg, TEAM_BOX.d0)), yB = Math.round(toY(sg, TEAM_BOX.d1)), top = Math.min(yA, yB), h = Math.abs(yB - yA);
                 const col = '#f5f5f5';
-                R(bx0, yA - 1, bx1 - bx0 + 2, 2, col); R(bx0, yB - 1, bx1 - bx0 + 2, 2, col); // front + back lines
-                R(bx0, top, 2, h, col); R(bx1, top, 2, h, col);                              // end lines
+                R(bx0, yA, bx1 - bx0 + 2, 1, col); R(bx0, yB, bx1 - bx0 + 2, 1, col); // front + back lines
+                R(bx0, top, 1, h, col); R(bx1, top, 1, h, col);                              // end lines
                 // end lines run on to the sideline (like the real 6-ft restricted strip)
-                const sl = Math.round(toY(sg, 0)); R(bx0, Math.min(sl, yA), 2, Math.abs(yA - sl), col); R(bx1, Math.min(sl, yA), 2, Math.abs(yA - sl), col);
+                const sl = Math.round(toY(sg, 0)); R(bx0, Math.min(sl, yA), 1, Math.abs(yA - sl), col); R(bx1, Math.min(sl, yA), 1, Math.abs(yA - sl), col);
             });
             return c;
         }
@@ -4600,7 +4628,7 @@ const PXS = (function () {
 
         function drawSideline(sign) {
             const isSouth = sign > 0; const items = slLayout(sign); const col = slColors(isSouth);
-            const u = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22); const zoomX = camera.zoom * X_STRETCH;
+            const u = Math.max(0.45, camera.zoom * 0.04 * 2.9 * 1.22 * 0.75); const zoomX = camera.zoom * X_STRETCH;   // sideline folks are drawn smaller than the on-field players
             const FR = (x, y, w, h) => { const x0 = Math.round(x), y0 = Math.round(y); ctx.fillRect(x0, y0, Math.max(1, Math.round(x + w) - x0), Math.max(1, Math.round(y + h) - y0)); };
             const depth = yd => Math.max(u, Math.round(yd * camera.zoom * camera.pitch));
             const cheer = (gameState === 'TOUCHDOWN_CELEBRATION'); const now = Date.now();
@@ -4781,12 +4809,12 @@ const PXS = (function () {
                 else if (p.isLunging) { let lt = Math.min(1, (p.lungeTimer || 0) / 12); shadowSize -= Math.sin(lt * Math.PI) * (PPY * 0.3); } 
                 else if (p.hasBall && gameState === 'TACKLED') { let t = Math.min(1, (p.tackleTimer || 0) / 15); shadowSize -= Math.sin(t * Math.PI) * (PPY * 0.3); }
                 shadowSize *= p.isRef ? refSizeScale : playerSizeScale;
-                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x * PPY, p.y * PPY, Math.max(0, shadowSize) / X_STRETCH, Math.max(0, shadowSize), 0, 0, Math.PI * 2); ctx.fill();
+                if (shadowSize > 0) drawPixelShadow(p.x, p.y, shadowSize / X_STRETCH, shadowSize, PPY, 'rgba(0,0,0,0.32)');
             });
             
-            if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
+            if (gameState !== 'COIN_TOSS' && (!players.some(p => p.hasBall) || players.some(p => p.snapT > 0)) && gameState !== 'PENALTY_SEQUENCE') {
                 let ballShadowSize = PPY * 0.4 * ballSizeScale; if (ball.z > 0) ballShadowSize = Math.max(PPY * 0.1, PPY * 0.4 * ballSizeScale - (ball.z * 0.08));
-                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(ball.x * PPY, ball.y * PPY, ballShadowSize / X_STRETCH, ballShadowSize, 0, 0, Math.PI * 2); ctx.fill();
+                drawPixelShadow(ball.x, ball.y, ballShadowSize / X_STRETCH, ballShadowSize, PPY, 'rgba(0,0,0,0.32)');
             }
             ctx.restore(); 
 
@@ -4918,9 +4946,9 @@ const PXS = (function () {
                 else if (isMovingNow) { aB1 = aB2 = 1.15; runLegs(); leanA = 0.14; bobPx = Math.round(Math.abs(Math.sin(tAnim)) * 1.2); }
                 else { let id = PXS.idle(p.pxSeed); armAngle1 = id.armA1; armAngle2 = id.armA2; legAngle1 = id.legA1; legAngle2 = id.legA2; aB1 = id.armB1; aB2 = id.armB2; kn1 = id.legK1; kn2 = id.legK2; plantPose = true; breathPx = (Math.floor(Date.now() / 520 + p.pxSeed * 9) % 2 === 0) ? 0 : 1; }
                 let frontArmA = armAngle2, frontArmB = aB2;
-                if (p.hasBall && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else { frontArmA = 0.1; frontArmB = 2.0; } }
+                if (p.hasBall && !(p.snapT > 0) && !isStancePose) { if (p.isDiving) { frontArmA = -Math.PI * 0.8; frontArmB = 0.1; } else { frontArmA = 0.12; frontArmB = 1.75; } }
                 let spriteCanvas = PXS.cached({
-                    facing: p.facing, girth: (p.girth || 1.0), isRef: !!p.isRef, hasFlag: !!p.hasFlag, hasBall: !!p.hasBall, ballScale: ballSizeScale,
+                    facing: p.facing, girth: (p.girth || 1.0), isRef: !!p.isRef, hasFlag: !!p.hasFlag, hasBall: !!p.hasBall && !(p.snapT > 0), ballScale: ballSizeScale,
                     skin: cSkin, jersey: cJersey, pants: cPants, helmet: cHelmet, jerseyDetail: cJerseyDetail, helmetStripe: cHelmetStripe, pantsStripe: cPantsStripe,
                     pitch: pitchQ, lean: leanA, plant: plantPose, bob: bobPx, breath: breathPx,
                     armA1: armAngle1, armA2: frontArmA, armB1: aB1, armB2: frontArmB, legA1: legAngle1, legA2: legAngle2, legK1: kn1, legK2: kn2
@@ -4949,7 +4977,7 @@ const PXS = (function () {
             drawStands(1);
             drawGrounds(NEAR_T, 1e9);
 
-            if (gameState !== 'COIN_TOSS' && !players.some(p => p.hasBall) && gameState !== 'PENALTY_SEQUENCE') {
+            if (gameState !== 'COIN_TOSS' && (!players.some(p => p.hasBall) || players.some(p => p.snapT > 0)) && gameState !== 'PENALTY_SEQUENCE') {
                 let bScreen = toScreen(ball.x, ball.y); let bScale = camera.zoom * 0.06 * ballSizeScale; let visualHeight = ball.z * camera.zoom * 0.6; 
                 ctx.save(); ctx.translate(Math.round(bScreen.x), Math.round(bScreen.y - visualHeight));
                 
@@ -4961,19 +4989,17 @@ const PXS = (function () {
                     if (travelAngle > Math.PI / 2 || travelAngle < -Math.PI / 2) { ctx.rotate(travelAngle + Math.PI); ctx.scale(-1, 1); } else ctx.rotate(travelAngle);
                     ball.spinAngle = (ball.spinAngle || 0) + (isPassing ? 1 : 0.5); 
                 } else if (gameState === 'BALL_IN_AIR') ctx.rotate(ball.x * 0.5);
+                else { const sq = players.find(p => p.snapT > 0); if (sq) ctx.rotate((1 - sq.snapT / sq.snapDur) * Math.PI * 2 * (offenseDirection === -1 ? -1 : 1)); }
                 
-                // pixel-art football: no outline, one pixel = one player-sprite pixel (zoom * 0.2123)
+                // pixel-art football: same colours as the one carried in the players' hands, no outline, one pixel = one player-sprite pixel
                 { const u = Math.max(2, camera.zoom * 0.2123); const Rr = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x * u, y * u, w * u, h * u); };
-                  const BR = '#c2692a', HI = '#dc8a45', SH = '#8f4719', WH = '#f8fafc';
-                  Rr(-2, -2, 4, 1, HI);            // top row (lit)
-                  Rr(-3, -1, 6, 1, BR);
-                  Rr(-4, 0, 8, 1, BR);
-                  Rr(-3, 1, 6, 1, SH);             // underside (shaded)
-                  Rr(-2, 2, 4, 1, SH);
-                  Rr(-3, -1, 1, 3, WH);            // white stripes near each end
-                  Rr(2, -1, 1, 3, WH);
-                  let lf = 0; if (isSpiralPass) lf = Math.floor(ball.spinAngle * 0.5) % 4;   // laces roll around as the ball spins
-                  if (lf === 0) Rr(-1, -1, 2, 1, WH); else if (lf === 1) Rr(-1, 0, 2, 1, WH); else if (lf === 2) Rr(-1, 1, 2, 1, WH);
+                  const BR = '#b45309', SH = '#78350f', WH = '#fafafa';
+                  Rr(-2, -2, 5, 1, BR);
+                  Rr(-3, -1, 7, 1, BR);
+                  Rr(-3, 0, 7, 1, SH);
+                  Rr(-2, 1, 5, 1, SH);
+                  let lf = 0; if (isSpiralPass) lf = Math.floor(ball.spinAngle * 0.5) % 3;   // laces roll around as the ball spins
+                  Rr(-1, lf === 0 ? -1 : (lf === 1 ? 0 : 1), 3, 1, WH);
                 }
                 ctx.restore();
             }
@@ -5578,7 +5604,7 @@ const PXS = (function () {
                     else if (p.pos === 'RB') { pose = PXS.idle(0.4); hasBall = true; }
                     else if (p.pos === 'LB' || p.pos === 'S') pose = PXS.stance({ isMLB: true }, seed);
                     else pose = PXS.stance({}, seed);
-                    const a2 = hasBall ? 0.1 : pose.armA2, b2 = hasBall ? 2.0 : pose.armB2;
+                    const a2 = hasBall ? 0.12 : pose.armA2, b2 = hasBall ? 1.75 : pose.armB2;
                     const cv = PXS.cached({ facing: 1, girth: p.girth, isRef: false, hasFlag: false, hasBall, skin: p.skin, jersey: t.c1, pants: t.c2, helmet: t.c2, jerseyDetail: '#ffffff', helmetStripe: t.c1, pantsStripe: t.c1,
                         pitch: pose.pitch, lean: 0, plant: true, bob: 0, breath: 0, armA1: pose.armA1, armA2: a2, armB1: pose.armB1, armB2: b2, legA1: pose.legA1, legA2: pose.legA2, legK1: pose.legK1, legK2: pose.legK2 });
                     const W = cv.width, H = cv.height, d = cv.getContext('2d').getImageData(0, 0, W, H).data; let x0 = W, x1 = -1, y0 = H;
