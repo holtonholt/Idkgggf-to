@@ -905,6 +905,9 @@
         // ===== PIXEL FIELD + PIXEL LOGOS =====
         // One field pixel = 1/FPX yard, so it lines up with the chunky player sprite pixels.
         const FPX = 8;
+        // Field art pixels are sized to match the player sprite pixels ON SCREEN (the view stretches x by 1.6 and squashes y by 0.9,
+        // so the grid is denser per yard in x than in y; that is what makes each field pixel come out square and sprite-sized).
+        const FPXX = 7.5, FPXY = 4.25;
         let fieldLogoImg = null; let fieldTeam = null; let pixelFieldCanvas = null;
 
         // 16x16 mascot sprites. Keys: o=outline, a=primary, b=secondary, w=white, k=dark, e=eye, y=yellow
@@ -968,17 +971,18 @@
         // Builds the whole field as one low-res canvas (1px = 1/FPX yard), scaled up later with no smoothing.
         function buildPixelField(team) {
             const L = FIELD_LENGTH_YARDS, Wd = FIELD_WIDTH_YARDS;
-            const PW = L * FPX, PH = Wd * FPX;
+            const PW = Math.round(L * FPXX), PH = Math.round(Wd * FPXY);
             const c = document.createElement('canvas'); c.width = PW; c.height = PH; const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-            const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
-            const yx = yd => Math.round(yd * FPX); // yard -> pixel x
+            const R = (x, y, w, h, col) => { g.fillStyle = col; const x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h); g.fillRect(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)); };
+            const yx = yd => Math.round(yd * FPXX); // yard -> pixel x
+            const yy = yd => Math.round(yd * FPXY); // yard -> pixel y
             // seeded noise so the grass is stable
             let seed = 1337; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
             // --- mowing stripes (every 5 yards) with a mid-stripe shade for depth ---
             for (let yd = 10; yd < 110; yd += 5) {
                 const alt = ((yd - 10) / 5) % 2 === 0;
-                R(yx(yd), 0, 5 * FPX, PH, alt ? '#27943b' : '#218033');
+                R(yx(yd), 0, 5 * FPXX, PH, alt ? '#27943b' : '#218033');
             }
             // --- grass speckle texture (individual pixels, same size as sprite pixels) ---
             for (let i = 0; i < PW * PH * 0.16; i++) {
@@ -990,18 +994,17 @@
             }
             // dirt/wear patch near both hash-mark lanes + centre
             const wear = (cxp, cyp, rx, ry) => { for (let i = 0; i < 220; i++) { const a = rnd() * 6.283, d = Math.sqrt(rnd()); const x = Math.round(cxp + Math.cos(a) * rx * d), y = Math.round(cyp + Math.sin(a) * ry * d); g.fillStyle = 'rgba(120,90,40,0.16)'; g.fillRect(x, y, 1, 1); } };
-            for (let yd = 20; yd <= 100; yd += 20) { wear(yx(yd), PH * 0.5 - 4 * FPX, 3 * FPX, 2 * FPX); wear(yx(yd), PH * 0.5 + 4 * FPX, 3 * FPX, 2 * FPX); }
+            for (let yd = 20; yd <= 100; yd += 20) { wear(yx(yd), PH * 0.5 - 4 * FPXY, 3 * FPXX, 2 * FPXY); wear(yx(yd), PH * 0.5 + 4 * FPXY, 3 * FPXX, 2 * FPXY); }
 
             // --- end zones: checkerboard in 1-yard blocks (pixel perfect), colored by team ---
             const awayCol = ['#9f1239', '#b91c1c'];
             const homeCol = ['#1e3a8a', '#1e40af'];
             const drawEZ = (x0, cols, tint) => {
-                const blk = Math.round(FPX); 
                 for (let by = 0; by < Wd; by++) for (let bx = 0; bx < 10; bx++) {
-                    R((x0 + bx) * FPX, by * FPX, FPX, FPX, cols[(bx + by) % 2]);
+                    R((x0 + bx) * FPXX, by * FPXY, FPXX, FPXY, cols[(bx + by) % 2]);
                 }
                 // inner shading pixels for texture
-                for (let i = 0; i < 700; i++) { const x = Math.floor(x0 * FPX + rnd() * 10 * FPX), y = Math.floor(rnd() * PH); g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.09)'; g.fillRect(x, y, 1, 1); }
+                for (let i = 0; i < 700; i++) { const x = Math.floor(x0 * FPXX + rnd() * 10 * FPXX), y = Math.floor(rnd() * PH); g.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.09)'; g.fillRect(x, y, 1, 1); }
             };
             drawEZ(0, homeCol); drawEZ(110, awayCol);
 
@@ -1061,34 +1064,34 @@
             // --- 1-yard tick marks along sidelines and hash lanes ---
             for (let yd = 11; yd < 110; yd++) {
                 if (yd % 5 === 0) continue; const x = yx(yd);
-                R(x, 0, 1, 3, white); R(x, PH - 3, 1, 3, white);
-                R(x, Math.round(PH * 0.5 - 5 * FPX), 1, 2, whiteDim); R(x, Math.round(PH * 0.5 + 5 * FPX) - 2, 1, 2, whiteDim);
+                R(x, 0, 1, 2, white); R(x, PH - 2, 1, 2, white);
+                R(x, Math.round(PH * 0.5 - 5 * FPXY), 1, 1, whiteDim); R(x, Math.round(PH * 0.5 + 5 * FPXY) - 1, 1, 1, whiteDim);
             }
             // --- sidelines / end lines (thick, 3px) ---
-            R(0, 0, PW, 3, white); R(0, PH - 3, PW, 3, white); R(0, 0, 3, PH, white); R(PW - 3, 0, 3, PH, white);
+            R(0, 0, PW, 2, white); R(0, PH - 2, PW, 2, white); R(0, 0, 3, PH, white); R(PW - 3, 0, 3, PH, white);
             // --- yard numbers + chevron arrows ---
             for (let yd = 20; yd <= 100; yd += 10) {
                 let n = yd - 10; if (n > 50) n = 100 - n; const txt = String(n);
                 const ys = [Math.round(PH * 0.16), Math.round(PH * 0.84)];
-                ys.forEach((yy, k) => {
-                    drawText(txt, yx(yd), yy, 2, white, null, k === 0 ? 3 : 0, fieldNumberScale);
+                ys.forEach((yyp, k) => {
+                    drawText(txt, yx(yd), yyp, 2, white, 'rgba(0,0,0,0.35)', k === 0 ? 3 : 0, fieldNumberScale);
                     if (n !== 50) {
-                        // triangle beside the number on the goal-line side, tip pointing at the nearest goal line
+                        // chunky triangle beside the number, tip pointing at the nearest goal line (same pixel size as the numbers)
                         const dir = yd < 60 ? -1 : 1; const half = Math.floor((txt.length * 6 - 1) * (2 * fieldNumberScale) / 2);
-                        const tipX = yx(yd) + dir * (half + 9);
-                        for (let i = 0; i < 4; i++) {
-                            const ax = tipX - dir * i, hh = i * 2 + 1;
-                            R(ax + 1, yy - i + 1, 1, hh, 'rgba(0,0,0,0.45)');
-                            R(ax, yy - i, 1, hh, white);
+                        const len = 8, gap = 4, tipX = yx(yd) + dir * (half + gap + len);
+                        for (let i = 0; i < len; i++) {
+                            const ax = tipX - dir * i, hh = i * 2 + 1, top = yyp - i;
+                            R(ax + 1, top + 1, 1, hh, 'rgba(0,0,0,0.35)');
+                            R(ax, top, 1, hh, white);
                         }
                     }
                 });
             }
             // --- goal-line / PAT marks (2yd PAT line) ---
-            [yx(10) + 2 * FPX + 0, yx(110) - 2 * FPX].forEach(x => { R(x - 0, Math.round(PH * 0.5 - 1), 1, 2, white); });
+            [yx(10) + 2 * FPXX, yx(110) - 2 * FPXX].forEach(x => { R(x, Math.round(PH * 0.5 - 1), 1, 2, white); });
             // --- end zone text ---
-            drawText('HOME', yx(5), PH / 2, 3, 'rgba(255,255,255,0.6)', 'rgba(0,0,0,0.35)', 1);
-            drawText('AWAY', yx(115), PH / 2, 3, 'rgba(255,255,255,0.6)', 'rgba(0,0,0,0.35)', 2);
+            drawText('HOME', yx(5), PH / 2, 4, 'rgba(255,255,255,0.6)', 'rgba(0,0,0,0.35)', 1);
+            drawText('AWAY', yx(115), PH / 2, 4, 'rgba(255,255,255,0.6)', 'rgba(0,0,0,0.35)', 2);
 
             // --- sideline details: team benches/dark border strip outside field ---
             return c;
@@ -1835,7 +1838,7 @@
         let refSizeScale = 1.35;
 
         // Fixed display proportions chosen by the user; no in-game size sliders.
-        let fieldNumberScale = 1.35;
+        let fieldNumberScale = 1.5;
         let scoreboardSizeScale = 0.70;
         let playerTagSizeScale = 0.70;
         // Apply the user's saved-in-code display proportions immediately.
@@ -4241,37 +4244,37 @@ const PXS = (function () {
         // poles on either side of the ball's path, so a kick visibly flies between them and over the bar.
         function drawGoalpost(yardX, pass) {
             if (pass) return; // single pass (kept so older call sites still work)
-            const scale = camera.zoom;
-            const crossbarHeight = scale * 5.0;
-            const uprightHeight = scale * 9.0;
-            const half = scale * 2.1;                      // half the gap between the uprights, in screen pixels
-            const beam = Math.max(3, scale * 0.32);
-            const depth = Math.max(1.5, Math.min(3.0, scale * 0.055));
-
-            const c = toScreen(yardX, 0);
-            const bar = { l: { x: c.x - half, y: c.y - crossbarHeight }, r: { x: c.x + half, y: c.y - crossbarHeight } };
-            const top = { l: { x: bar.l.x, y: bar.l.y - uprightHeight }, r: { x: bar.r.x, y: bar.r.y - uprightHeight } };
-
+            const z = camera.zoom;
+            const barH = z * 5.0;                           // crossbar height: matches the game's "kick is good" height (ball z 8.33 * 0.6)
+            const upH = z * 10.0;                           // uprights rise this far above the crossbar
+            const beam = Math.max(5, z * 0.34);
+            const depth = Math.max(2, Math.min(4, z * 0.07));
+            const GY = 3.5;                                 // uprights sit at the same +-3.5 yards the kick check uses
+            const base = toScreen(yardX, 0), farB = toScreen(yardX, -GY), nearB = toScreen(yardX, GY);
+            const farBar = { x: farB.x, y: farB.y - barH }, nearBar = { x: nearB.x, y: nearB.y - barH };
+            const farTop = { x: farBar.x, y: farBar.y - upH }, nearTop = { x: nearBar.x, y: nearBar.y - upH };
+            const stemTop = { x: base.x, y: base.y - barH };
             ctx.save();
             function beamLine(a, b, w) {
                 const bw = w || beam;
                 ctx.lineCap = 'square'; ctx.lineJoin = 'miter';
-                ctx.strokeStyle = '#111827'; ctx.lineWidth = bw + 3;
+                ctx.strokeStyle = '#111827'; ctx.lineWidth = bw + 4;
                 ctx.beginPath(); ctx.moveTo(a.x + depth, a.y + depth); ctx.lineTo(b.x + depth, b.y + depth); ctx.stroke();
-                ctx.lineWidth = bw + 2;
+                ctx.lineWidth = bw + 3;
                 ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
                 ctx.strokeStyle = '#eab308'; ctx.lineWidth = bw;
                 ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-                ctx.strokeStyle = '#fff0a6'; ctx.lineWidth = Math.max(1, bw * 0.22);
+                ctx.strokeStyle = '#fff0a6'; ctx.lineWidth = Math.max(1, bw * 0.25);
                 ctx.beginPath(); ctx.moveTo(a.x - bw * 0.18, a.y - bw * 0.18); ctx.lineTo(b.x - bw * 0.18, b.y - bw * 0.18); ctx.stroke();
             }
+            // ground shadows under the stem and both uprights
             ctx.globalAlpha = 0.32; ctx.fillStyle = '#07110a';
-            ctx.beginPath(); ctx.ellipse(c.x + depth * 0.9, c.y + depth * 1.2, Math.max(5, scale * 0.9), Math.max(2, scale * 0.24), 0, 0, Math.PI * 2); ctx.fill();
+            [base, farB, nearB].forEach(q => { ctx.beginPath(); ctx.ellipse(q.x + depth, q.y + depth, Math.max(6, z * 0.5), Math.max(3, z * 0.2), 0, 0, Math.PI * 2); ctx.fill(); });
             ctx.globalAlpha = 1;
-            beamLine(c, { x: c.x, y: c.y - crossbarHeight }, beam * 1.15);   // stem
-            beamLine(bar.l, bar.r);                                          // crossbar
-            beamLine(bar.l, top.l);                                          // left upright
-            beamLine(bar.r, top.r);                                          // right upright
+            beamLine(farB, farTop);                          // far upright (behind)
+            beamLine(base, stemTop, beam * 1.25);            // stem
+            beamLine(farBar, nearBar);                       // crossbar, running across the width of the field
+            beamLine(nearB, nearTop);                        // near upright (in front)
             ctx.restore();
         }
 
