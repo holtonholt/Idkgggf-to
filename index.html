@@ -88,11 +88,11 @@
         #dialog-prompt { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #facc15; text-align: right; text-shadow: 2px 2px 0px #000; margin-top: 10px; animation: flashClock 1s infinite; display: none; }
         #mobile-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: max(18px, env(safe-area-inset-bottom)); transition: opacity 0.2s ease; }
         /* Touch controls: flat, minimal, same look as the scoreboard / panels (dark glass + white outline + hard shadow). */
-        :root { --u: 3; --ctl: clamp(92px, 24vmin, 128px); }
-        #joystick-zone { width: var(--ctl); height: var(--ctl); flex: 0 0 auto; background: rgba(15,23,42,0.45); border: 3px solid rgba(255,255,255,0.85); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; }
-        #joystick-knob { width: 42%; height: 42%; background: rgba(255,255,255,0.92); border: 3px solid #0f172a; border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
-        #action-btn { width: calc(var(--ctl) * 0.72); height: calc(var(--ctl) * 0.72); flex: 0 0 auto; background: rgba(220,38,38,0.8); border: 3px solid rgba(255,255,255,0.9); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: #fff; font-size: clamp(16px, 4.6vmin, 24px); text-shadow: 2px 2px 0 #000; margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; transition: transform 0.06s, background-color 0.06s, box-shadow 0.06s; }
-        #action-btn:active, #action-btn.active-touch { background: rgba(185,28,28,0.95); transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0,0,0,0.55); }
+        :root { --u: 3; --ctl: clamp(84px, 22vmin, 116px); }
+        #joystick-zone { width: var(--ctl); height: var(--ctl); flex: 0 0 auto; background: rgba(255,255,255,0.10); border: 2px solid rgba(255,255,255,0.55); border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; box-sizing: border-box; }
+        #joystick-knob { width: 38%; height: 38%; background: rgba(255,255,255,0.55); border: 0; border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
+        #action-btn { width: calc(var(--ctl) * 0.62); height: calc(var(--ctl) * 0.62); flex: 0 0 auto; background: rgba(255,255,255,0.14); border: 2px solid rgba(255,255,255,0.6); border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: rgba(255,255,255,0.85); font-size: clamp(12px, 3.6vmin, 18px); text-shadow: 1px 1px 0 rgba(0,0,0,0.6); margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; transition: background-color 0.06s, transform 0.06s; }
+        #action-btn:active, #action-btn.active-touch { background: rgba(255,255,255,0.38); transform: scale(0.94); }
         /* Pass-type badge (bottom centre, between the stick and the button) */
         #pass-hud { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9; pointer-events: none; display: none; flex-direction: column; align-items: center; gap: 6px; font-family: 'Press Start 2P', monospace; }
         #pass-hud.show { display: flex; }
@@ -4946,7 +4946,7 @@ const PXS = (function () {
             if (fieldLogoImg && fieldLogoImg !== true) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
 
             if (['PRE_SNAP', 'PLAYING', 'TACKLED', 'PLAY_DEAD', 'PENALTY_SEQUENCE'].includes(gameState) && lineOfScrimmage > 0 && !isPAT) {
-                let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(3, PPY * 0.15); ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
+                let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(1.5, PPY * 0.045); ctx.strokeStyle = 'rgba(59, 130, 246, 0.75)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
                 let ylx = firstDownLine * PPY; ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.beginPath(); ctx.moveTo(ylx, fieldTop); ctx.lineTo(ylx, fieldTop + fieldHeight); ctx.stroke();
             }
 
@@ -5360,20 +5360,14 @@ const PXS = (function () {
 
                         ctx.save();
                         ctx.translate(indX, indY);
-                        let pulse = 1 + Math.sin(Date.now() / 150) * 0.2;
+                        let pulse = 1 + Math.sin(Date.now() / 200) * 0.1;
                         ctx.scale(pulse, pulse);
                         ctx.rotate(angle);
-                        ctx.fillStyle = '#ef4444'; 
-                        ctx.strokeStyle = '#ffffff';
-                        ctx.lineWidth = 3;
+                        ctx.fillStyle = '#facc15'; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
                         ctx.beginPath();
-                        ctx.moveTo(20, 0);
-                        ctx.lineTo(-10, -15);
-                        ctx.lineTo(-5, 0);
-                        ctx.lineTo(-10, 15);
+                        ctx.moveTo(9, 0); ctx.lineTo(-5, -6); ctx.lineTo(-2, 0); ctx.lineTo(-5, 6);
                         ctx.closePath();
-                        ctx.fill();
-                        ctx.stroke();
+                        ctx.fill(); ctx.stroke();
                         ctx.restore();
                     }
                 }
