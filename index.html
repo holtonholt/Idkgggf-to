@@ -88,11 +88,12 @@
         #dialog-prompt { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #facc15; text-align: right; text-shadow: 2px 2px 0px #000; margin-top: 10px; animation: flashClock 1s infinite; display: none; }
         /* Visible touch controls: compact joystick and ACT button with hitboxes limited to their circles. */
         #mobile-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: max(18px, env(safe-area-inset-bottom)); transition: opacity 0.2s ease; }
-        #joystick-zone { width: clamp(106px, 24vw, 142px); height: clamp(106px, 24vw, 142px); flex: 0 0 auto; background: rgba(15, 23, 42, 0.42); border: 3px solid rgba(255, 255, 255, 0.58); border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; box-shadow: inset 0 0 0 3px rgba(15, 23, 42, 0.35), inset 0 0 18px rgba(0,0,0,0.38), 0 4px 10px rgba(0,0,0,0.28); margin-bottom: 10px; touch-action: none; }
-        #joystick-zone::before { content: ''; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.18); box-shadow: 0 -27px 0 rgba(255,255,255,0.22), 0 27px 0 rgba(255,255,255,0.22), -27px 0 0 rgba(255,255,255,0.22), 27px 0 0 rgba(255,255,255,0.22); pointer-events: none; }
-        #joystick-knob { width: 46%; height: 46%; background: radial-gradient(circle at 34% 28%, rgba(255,255,255,0.94), rgba(226,232,240,0.82) 48%, rgba(100,116,139,0.8)); border: 3px solid rgba(255,255,255,0.72); border-radius: 50%; box-shadow: inset 0 -5px 0 rgba(15,23,42,0.22), 0 3px 9px rgba(0,0,0,0.42); pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
-        #action-btn { width: clamp(78px, 18vw, 102px); height: clamp(78px, 18vw, 102px); flex: 0 0 auto; background: linear-gradient(145deg, rgba(248,113,113,0.94), rgba(185,28,28,0.94)); border: 4px solid rgba(255,255,255,0.86); border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: white; font-size: clamp(10px, 2.7vw, 14px); box-shadow: inset 0 -6px 0 rgba(80,0,0,0.34), 0 4px 0 rgba(0,0,0,0.45), 0 7px 12px rgba(0,0,0,0.32); text-shadow: 2px 2px 0 #000; margin-bottom: 22px; touch-action: none; user-select: none; -webkit-user-select: none; }
-        #action-btn:active, #action-btn.active-touch { transform: translateY(3px); box-shadow: inset 0 -2px 0 rgba(80,0,0,0.28), 0 1px 0 rgba(0,0,0,0.45), 0 2px 5px rgba(0,0,0,0.28); background: linear-gradient(145deg, rgba(252,165,165,0.98), rgba(220,38,38,0.98)); }
+        /* Pixel-art controls: sprites are drawn in JS (see buildPixelControls) and scaled by a whole-number --u so every pixel stays crisp. */
+        :root { --u: 3; }
+        #joystick-zone { width: calc(45px * var(--u)); height: calc(45px * var(--u)); flex: 0 0 auto; background: var(--js-base) center / 100% 100% no-repeat; image-rendering: pixelated; border: 0; border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; }
+        #joystick-knob { width: calc(21px * var(--u)); height: calc(21px * var(--u)); background: var(--js-knob) center / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; filter: drop-shadow(0 calc(1px * var(--u)) 0 rgba(0,0,0,0.38)); }
+        #action-btn { width: calc(33px * var(--u)); height: calc(33px * var(--u)); flex: 0 0 auto; background: var(--act-up) center / 100% 100% no-repeat; image-rendering: pixelated; border: 0; border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: #fff; font-size: calc(5px * var(--u)); padding-bottom: calc(5px * var(--u)); letter-spacing: 0; text-shadow: calc(0.7px * var(--u)) calc(0.7px * var(--u)) 0 #7f1d1d; margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; }
+        #action-btn:active, #action-btn.active-touch { background-image: var(--act-down); padding-bottom: 0; padding-top: calc(3px * var(--u)); }
         @media (hover: hover) and (pointer: fine) { #mobile-controls, #joystick-zone, #action-btn { pointer-events: none !important; } }
         #hub-container { background-color: #facc15; background-image: linear-gradient(45deg, #eab308 25%, transparent 25%), linear-gradient(-45deg, #eab308 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eab308 75%), linear-gradient(-45deg, transparent 75%, #eab308 75%); background-size: 40px 40px; background-position: 0 0, 0 20px, 20px -20px, -20px 0px; }
         
@@ -780,6 +781,50 @@
         let isRefPenaltyZoom = false;
 
         // Mobile Controls setup
+        // ===== PIXEL-ART CONTROLS: draw the joystick + ACT button as tiny sprites, then scale them up with no smoothing =====
+        (function buildPixelControls() {
+            const root = document.documentElement;
+            const setU = () => { const w = Math.min(window.innerWidth, window.innerHeight * 1.9); const u = w < 520 ? 2 : (w < 900 ? 3 : 4); window._pxU = u; root.style.setProperty('--u', u); };
+            setU(); window.addEventListener('resize', setU);
+            const sprite = (N, paint) => { const c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const col = paint(x, y); if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } } return c; };
+            const over = (a, b) => (x, y) => b(x, y) || a(x, y);
+            // helper: a filled pixel disc layer. shade(t, dist, R) picks the colour; t = lighting from the top-left (-1..1)
+            const disc = (cx, cy, R, shade) => (x, y) => { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy); if (d > R) return null; return shade((-dx - dy) / (R * 1.414), d, R, dx, dy); };
+            // --- joystick base (45x45): dark glass floor, bevelled light rim, four direction pips
+            const base = sprite(45, (x, y) => {
+                const dx = x - 22, dy = y - 22, d = Math.hypot(dx, dy); if (d > 22.4) return null;
+                const t = (-dx - dy) / 31;
+                if (d > 21.2) return '#0b1220';
+                if (d > 18.4) return t > 0.1 ? '#e2e8f0' : (t > -0.45 ? '#94a3b8' : '#64748b');
+                if (d > 17.2) return '#0b1220';
+                const pip = (px, py, vert) => Math.abs(dx - px) + Math.abs(dy - py) <= 1;
+                if ([[0, -13], [0, 13], [-13, 0], [13, 0]].some(q => pip(q[0], q[1]))) return 'rgba(226,232,240,0.85)';
+                if (Math.abs(d - 9.5) < 0.55) return 'rgba(148,163,184,0.28)';
+                return 'rgba(15,23,42,0.74)';
+            });
+            // --- joystick knob (21x21): banded light grey ball with a crisp highlight
+            const knob = sprite(21, (x, y) => {
+                const dx = x - 10, dy = y - 10, d = Math.hypot(dx, dy); if (d > 10.4) return null;
+                const t = (-dx - dy) / 14.1;
+                if (d > 9.3) return '#0b1220';
+                if (x >= 5 && x <= 7 && y >= 4 && y <= 5) return '#ffffff';
+                if (x === 4 && y === 6) return '#ffffff';
+                return t > 0.5 ? '#f8fafc' : t > 0.05 ? '#e2e8f0' : t > -0.4 ? '#cbd5e1' : '#94a3b8';
+            });
+            // --- ACT button (33x33): a red dome sitting on a darker lip; the pressed version sinks into it
+            const act = (top) => sprite(33, (x, y) => {
+                const lip = disc(16, 17, 15.4, (t, d, R) => d > R - 1.1 ? '#3b0a0a' : '#991b1b');
+                const dome = disc(16, top, 15.4, (t, d, R) => {
+                    if (d > R - 1.1) return '#3b0a0a';
+                    if (d > R - 2.3 && t > 0.2) return '#fecaca';
+                    return t > 0.5 ? '#f87171' : t > -0.05 ? '#ef4444' : t > -0.5 ? '#dc2626' : '#b91c1c';
+                });
+                return over(lip, dome)(x, y);
+            });
+            const url = c => 'url(' + c.toDataURL() + ')';
+            root.style.setProperty('--js-base', url(base)); root.style.setProperty('--js-knob', url(knob));
+            root.style.setProperty('--act-up', url(act(14))); root.style.setProperty('--act-down', url(act(16)));
+        })();
         const joystickZone = document.getElementById('joystick-zone');
         const joystickKnob = document.getElementById('joystick-knob');
         const actionBtn = document.getElementById('action-btn');
@@ -847,7 +892,7 @@
             let dx = clientX - joystick.origX; let dy = clientY - joystick.origY; let maxDist = 45; 
             let dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > maxDist) { dx = (dx/dist) * maxDist; dy = (dy/dist) * maxDist; }
-            joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+            { const _u = window._pxU || 3; joystickKnob.style.transform = `translate(${Math.round(dx / _u) * _u}px, ${Math.round(dy / _u) * _u}px)`; }
             joystick.dx = dx; joystick.dy = dy; joystick.normX = dx / maxDist; joystick.normY = dy / maxDist;
         }
 
@@ -1551,13 +1596,6 @@
 
             // Update HUD text if needed based on state
             let hudHtml = "";
-            if (['PRE_SNAP', 'PLAY_CALL'].includes(gameState)) {
-                if (offenseDirection === 1) { // Client is Offense
-                    hudHtml = `<div style="color: #3b82f6; margin-top: 20px; text-shadow: 3px 3px 0 #000; font-size: 24px; animation: pulsePoss 1s infinite;">TAP ACT TO SNAP</div>`;
-                } else { // Client is Defense
-                    hudHtml = `<div style="color: #ef4444; margin-top: 20px; text-shadow: 3px 3px 0 #000; font-size: 24px; animation: pulsePoss 1s infinite;">DEFENSE: GET READY!</div>`;
-                }
-            }
             if (!hudHtml && window._mpHostHud && !['PRE_SNAP', 'PLAY_CALL'].includes(gameState)) hudHtml = window._mpHostHud; // host banners (INTERCEPTION!, etc.)
             if (hudHtml !== window._lastHud) { window._lastHud = hudHtml; hud.innerHTML = hudHtml; }
 
@@ -2708,13 +2746,7 @@
             players.forEach(p => { if (p === player) return; p.facing = (p.isCPU === isPlayerOffense) ? -dir : dir; });
             camera.target = isPlayerOffense ? player : players.find(p => p.isQB); finalizePlayers(); hideUI();
             
-            if (!isIntroScene) { 
-                if (isMultiplayer) {
-                    hud.innerHTML = `<div style="color: ${isPlayerOffense ? '#3b82f6' : '#ef4444'}; margin-top: 20px; text-shadow: 3px 3px 0 #000; font-size: 24px; animation: pulsePoss 1s infinite;">${isPlayerOffense ? 'TAP ACT TO SNAP' : 'DEFENSE: GET READY!'}</div>`;
-                } else {
-                    hud.innerHTML = `<div style="color: ${isPlayerOffense ? '#3b82f6' : '#ef4444'}; margin-top: 20px; text-shadow: 3px 3px 0 #000; font-size: 24px; animation: pulsePoss 1s infinite;">${isPlayerOffense ? 'TAP ACT TO SNAP' : 'DEFENSE: GET READY!'}</div>`;
-                }
-            } else { hud.innerHTML = ""; }
+            hud.innerHTML = "";
 
             if (!isPlayerOffense && (isMpHost || !isMultiplayer)) {
                 if (!isMultiplayer) {
@@ -4418,7 +4450,7 @@ const PXS = (function () {
 
         // ===== PIXEL ROUTE ART: play routes painted on the turf =====
         // Palette pulled from the field: warm sunlit gold (like the first-down line) on a deep turf-green outline.
-        const ROUTE_PAL = { fill: '#eef6ea', out: 'rgba(10,40,20,0.55)' };   // soft chalk white (matches the yard lines) with a faint turf-green edge
+        const ROUTE_PAL = { fill: '#f3f7ef', shadow: 'rgba(6,34,16,0.5)' };   // chalk white (same as the yard lines) + a one-pixel turf-green shadow
         let _routeCanvas = null, _routeKey = '';
         // where every eligible receiver / the runner goes, in yards, computed from the real route code the players run
         function computeRoutePaths(play) {
@@ -4458,27 +4490,38 @@ const PXS = (function () {
             const g = _routeCanvas.getContext('2d'); g.clearRect(0, 0, PW, PH);
             const solid = new Set();
             const setPx = (x, y) => { if (x >= 0 && y >= 0 && x < PW && y < PH) solid.add(y * PW + x); };
+            // straighten the simulated path into a few clean segments (Ramer-Douglas-Peucker)
+            const rdp = (pts, tol) => { if (pts.length < 3) return pts; const a = pts[0], b = pts[pts.length - 1]; let m = 0, mi = 0; const dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.hypot(dx, dy) || 1;
+                for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / dl; if (d > m) { m = d; mi = i; } }
+                if (m <= tol) return [a, b]; const l = rdp(pts.slice(0, mi + 1), tol), r = rdp(pts.slice(mi), tol); return l.slice(0, -1).concat(r); };
             paths.forEach(path => {
-                const pp = path.map(xy => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY]), walk = [];
+                const pp = rdp(path, 0.6).map(xy => [xy[0] * FPXX, (xy[1] + FIELD_WIDTH_YARDS / 2) * FPXY]);
+                let total = 0; for (let i = 1; i < pp.length; i++) total += Math.hypot(pp[i][0] - pp[i - 1][0], pp[i][1] - pp[i - 1][1]);
+                if (total < 6) return;
+                // chalk dashes: 2px thick, 4 on / 2 off, ending in a solid pixel arrowhead
+                let run = 0;
                 for (let i = 1; i < pp.length; i++) {
-                    const [x0, y0] = pp[i - 1], [x1, y1] = pp[i], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2));
-                    for (let j = (i === 1 ? 0 : 1); j <= n; j++) walk.push([x0 + (x1 - x0) * j / n, y0 + (y1 - y0) * j / n]);
+                    const [x0, y0] = pp[i - 1], [x1, y1] = pp[i], len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.ceil(len * 2));
+                    for (let j = 0; j <= n; j++) {
+                        const d = run + len * j / n; if (total - d < 5.5) continue;            // the arrowhead covers the last stretch
+                        if ((d % 6) >= 4) continue;
+                        const x = Math.round(x0 + (x1 - x0) * j / n - 0.5), y = Math.round(y0 + (y1 - y0) * j / n - 0.5);
+                        setPx(x, y); setPx(x + 1, y); setPx(x, y + 1); setPx(x + 1, y + 1);
+                    }
+                    run += len;
                 }
-                if (walk.length < 4) return;
-                // thin 1px line
-                walk.forEach(w => setPx(Math.floor(w[0]), Math.floor(w[1])));
-                // small pixel arrowhead
-                const n = walk.length, e = walk[n - 1], b0 = walk[Math.max(0, n - 9)];
-                let dx = e[0] - b0[0], dy = e[1] - b0[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-                const tx = e[0] + dx * 1.5, ty = e[1] + dy * 1.5, px = -dy, py = dx, HL = 4.5;
+                const e = pp[pp.length - 1]; let k = pp.length - 2; while (k > 0 && Math.hypot(e[0] - pp[k][0], e[1] - pp[k][1]) < 3) k--;
+                let dx = e[0] - pp[k][0], dy = e[1] - pp[k][1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                const HL = 7, tx = e[0] + dx * 1.2, ty = e[1] + dy * 1.2, px = -dy, py = dx;
+                // solid line section under the head so it joins cleanly
+                for (let t = 0; t < HL; t += 0.5) { const x = Math.round(tx - dx * t - 0.5), y = Math.round(ty - dy * t - 0.5); setPx(x, y); setPx(x + 1, y); setPx(x, y + 1); setPx(x + 1, y + 1); }
                 for (let yy = Math.floor(ty - HL - 1); yy <= Math.ceil(ty + HL + 1); yy++) for (let xx = Math.floor(tx - HL - 1); xx <= Math.ceil(tx + HL + 1); xx++) {
                     const qx = xx + 0.5 - tx, qy = yy + 0.5 - ty, u = -(qx * dx + qy * dy), v = qx * px + qy * py;
-                    if (u >= -0.2 && u <= HL && Math.abs(v) <= 0.2 + u * 0.55) setPx(xx, yy);
+                    if (u >= -0.3 && u <= HL && Math.abs(v) <= 0.4 + u * 0.5) setPx(xx, yy);
                 }
             });
-            const outline = new Set();
-            solid.forEach(k => { const x = k % PW, y = (k - x) / PW; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ax, ay]) => { const nx = x + ax, ny = y + ay; if (nx < 0 || ny < 0 || nx >= PW || ny >= PH) return; const nk = ny * PW + nx; if (!solid.has(nk)) outline.add(nk); }); });
-            g.fillStyle = ROUTE_PAL.out; outline.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
+            const shadow = new Set(); solid.forEach(k => { const x = k % PW, y = (k - x) / PW; if (x + 1 < PW && y + 1 < PH) { const nk = (y + 1) * PW + x + 1; if (!solid.has(nk)) shadow.add(nk); } });
+            g.fillStyle = ROUTE_PAL.shadow; shadow.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
             g.fillStyle = ROUTE_PAL.fill; solid.forEach(k => { const x = k % PW; g.fillRect(x, (k - x) / PW, 1, 1); });
             _routeKey = key; return _routeCanvas;
         }
