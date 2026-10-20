@@ -1817,13 +1817,21 @@
         const CAM_MODES = { normal: { label: 'NORMAL', desc: 'Classic flat field view', z: 1, pitch: FIELD_VIEW_PITCH, skew: 0, lag: 0.2 } };
         let cameraMode = 'normal';
         const CAMERA_ZOOM_FACTOR = 1.33;
+        // When zoomed in, follow the target up/down the field width too (instead of locking to the middle), but stop
+        // once the sideline plus a small margin is in view, so you can always see how close you are to the boundary.
+        function camYFollow(ty) {
+            const half = canvas.height * 0.5 / (camera.zoom * camera.pitch); // yards visible above / below the centre
+            const lim = FIELD_WIDTH_YARDS / 2 + 4 - half;
+            if (lim <= 0) return 0;
+            return Math.max(-lim, Math.min(lim, ty || 0));
+        }
         const CAM_RUN_ZOOM = 1.55;  // extra zoom while a player is running with the ball (was 1.17)
         const CAM_PASS_ZOOM = 1.45; // extra zoom while a pass is in the air (was 1.10)
         const camUnit = () => canvas.height * 0.0165 * CAMERA_ZOOM_FACTOR;
 
         // Fixed sprite sizing chosen by the user. These are visual-only; collision and movement remain unchanged.
-        let playerSizeScale = 1.35;
-        let ballSizeScale = 1.15;
+        let playerSizeScale = 1.5;
+        let ballSizeScale = 1.4;
         let refSizeScale = 1.35;
 
         // Fixed display proportions chosen by the user; no in-game size sliders.
@@ -2959,6 +2967,7 @@
                         tx = focus.x; ty = focus.y; tz = gameState === 'PLAYING' && focus.hasBall ? camera.baseZoom * CAM_RUN_ZOOM : camera.baseZoom; kPos = 0.25; kZoom = 0.1;
                     }
                     if (tx !== undefined) {
+                        ty = camYFollow(ty);
                         if (Math.abs(tx - camera.currentX) > 30 || Math.abs(ty - camera.currentY) > 30) { camera.currentX = tx; camera.currentY = ty; }
                         else { camera.currentX += (tx - camera.currentX) * kPos; camera.currentY += (ty - camera.currentY) * kPos; }
                         camera.zoom += (tz - camera.zoom) * kZoom;
@@ -2997,7 +3006,7 @@
             if (gameState === 'PAUSED') return;
             if (gameState === 'DIALOG') { if (keys['Space']) { if (!spacePressed) { spacePressed = true; advanceDialog(); } } else spacePressed = false; return; }
 
-            { const lag = (isMultiplayer && isMpClient) ? 0.2 : CAM_MODES[cameraMode].lag; camera.currentX += (camera.x - camera.currentX) * lag; if (cameraMode !== 'free' && !isIntroScene) { camera.y = 0; camera.currentY = 0; } else { camera.currentY += (camera.y - camera.currentY) * lag; } }
+            { const lag = (isMultiplayer && isMpClient) ? 0.2 : CAM_MODES[cameraMode].lag; camera.currentX += (camera.x - camera.currentX) * lag; if (cameraMode !== 'free' && !isIntroScene) { camera.y = camYFollow(camera.target ? camera.target.y : 0); } camera.currentY += (camera.y - camera.currentY) * lag; }
 
             if (isIntroScene) {
                 if (introScriptState === 'PRE_SNAP_WAIT') { introTimer--; if (introTimer <= 0) { snapBall(); introScriptState = 'SCRIPTED_RUN'; } } 
@@ -3450,10 +3459,10 @@
             else { if (Math.abs(camera.zoom - camera.baseZoom) > 0.01) camera.zoom += (camera.baseZoom - camera.zoom) * 0.08; }
 
             if (camera.target) {
-                camera.x = camera.target.x; camera.y = (cameraMode === 'free' || isIntroScene) ? camera.target.y : 0;
+                camera.x = camera.target.x; camera.y = (cameraMode === 'free' || isIntroScene) ? camera.target.y : camYFollow(camera.target.y);
             }
             cameraModeUpdate();
-            if (cameraMode !== 'free' && !isIntroScene) camera.y = 0;
+            if (cameraMode !== 'free' && !isIntroScene) camera.y = camYFollow(camera.target ? camera.target.y : 0);
             updateScoreboard();
         }
 
@@ -4228,55 +4237,41 @@ const PXS = (function () {
         // Side-view goalpost: the two uprights are 3/4-angled (far one slides left, near one slides right) so BOTH poles
         // read clearly and the ball visibly passes between them. pass 0 = shadow, support, far upright + crossbar (behind
         // the ball); pass 1 = near upright (drawn in front of the ball so it really flies "through" the goal).
+        // Classic goalpost, drawn facing the sideline camera: stem at the end line, horizontal crossbar, and TWO upright
+        // poles on either side of the ball's path, so a kick visibly flies between them and over the bar.
         function drawGoalpost(yardX, pass) {
+            if (pass) return; // single pass (kept so older call sites still work)
             const scale = camera.zoom;
-            const widthYards = 7.0;
             const crossbarHeight = scale * 5.0;
             const uprightHeight = scale * 9.0;
+            const half = scale * 2.1;                      // half the gap between the uprights, in screen pixels
             const beam = Math.max(3, scale * 0.32);
             const depth = Math.max(1.5, Math.min(3.0, scale * 0.055));
-            const sep = scale * 1.35; // horizontal spread of the two uprights on screen
 
-            const base = toScreen(yardX, 0);
-            const farGround = toScreen(yardX, -widthYards / 2);
-            const nearGround = toScreen(yardX, widthYards / 2);
-            farGround.x -= sep; nearGround.x += sep;
-            const centerTop = { x: base.x, y: base.y - crossbarHeight };
-            const farJoin = { x: farGround.x, y: farGround.y - crossbarHeight };
-            const nearJoin = { x: nearGround.x, y: nearGround.y - crossbarHeight };
-            const farTop = { x: farJoin.x, y: farJoin.y - uprightHeight };
-            const nearTop = { x: nearJoin.x, y: nearJoin.y - uprightHeight };
+            const c = toScreen(yardX, 0);
+            const bar = { l: { x: c.x - half, y: c.y - crossbarHeight }, r: { x: c.x + half, y: c.y - crossbarHeight } };
+            const top = { l: { x: bar.l.x, y: bar.l.y - uprightHeight }, r: { x: bar.r.x, y: bar.r.y - uprightHeight } };
 
             ctx.save();
-            function beamLine(a, b) {
-                ctx.lineCap = 'square';
-                ctx.lineJoin = 'miter';
-                ctx.strokeStyle = '#111827';
-                ctx.lineWidth = beam + 3;
+            function beamLine(a, b, w) {
+                const bw = w || beam;
+                ctx.lineCap = 'square'; ctx.lineJoin = 'miter';
+                ctx.strokeStyle = '#111827'; ctx.lineWidth = bw + 3;
                 ctx.beginPath(); ctx.moveTo(a.x + depth, a.y + depth); ctx.lineTo(b.x + depth, b.y + depth); ctx.stroke();
-                ctx.lineWidth = beam + 2;
+                ctx.lineWidth = bw + 2;
                 ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-                ctx.strokeStyle = '#eab308';
-                ctx.lineWidth = beam;
+                ctx.strokeStyle = '#eab308'; ctx.lineWidth = bw;
                 ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-                ctx.strokeStyle = '#fff0a6';
-                ctx.lineWidth = Math.max(1, beam * 0.22);
-                ctx.beginPath(); ctx.moveTo(a.x - beam * 0.18, a.y - beam * 0.18); ctx.lineTo(b.x - beam * 0.18, b.y - beam * 0.18); ctx.stroke();
+                ctx.strokeStyle = '#fff0a6'; ctx.lineWidth = Math.max(1, bw * 0.22);
+                ctx.beginPath(); ctx.moveTo(a.x - bw * 0.18, a.y - bw * 0.18); ctx.lineTo(b.x - bw * 0.18, b.y - bw * 0.18); ctx.stroke();
             }
-            function groundShadow(p) {
-                ctx.globalAlpha = 0.32; ctx.fillStyle = '#07110a';
-                ctx.beginPath(); ctx.ellipse(p.x + depth * 0.9, p.y + depth * 1.2, Math.max(5, scale * 0.72), Math.max(2, scale * 0.20), 0, 0, Math.PI * 2); ctx.fill();
-                ctx.globalAlpha = 1;
-            }
-            if (!pass) {
-                groundShadow(base); groundShadow(farGround);
-                beamLine(base, centerTop);          // gooseneck support
-                beamLine(farJoin, farTop);          // far upright
-                beamLine(farJoin, nearJoin);        // crossbar (slants toward the camera)
-            } else {
-                groundShadow(nearGround);
-                beamLine(nearJoin, nearTop);        // near upright
-            }
+            ctx.globalAlpha = 0.32; ctx.fillStyle = '#07110a';
+            ctx.beginPath(); ctx.ellipse(c.x + depth * 0.9, c.y + depth * 1.2, Math.max(5, scale * 0.9), Math.max(2, scale * 0.24), 0, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+            beamLine(c, { x: c.x, y: c.y - crossbarHeight }, beam * 1.15);   // stem
+            beamLine(bar.l, bar.r);                                          // crossbar
+            beamLine(bar.l, top.l);                                          // left upright
+            beamLine(bar.r, top.r);                                          // right upright
             ctx.restore();
         }
 
@@ -6280,6 +6275,7 @@ const PXS = (function () {
                 const r = ensureRoster(); if (!r) return;
                 const t = teamOf(), tr = ratingsOf(r), bench = career.bench || [], packs = career.packSeq || 0, funds = career.funds || 0;
                 const s = seasonOf(), done = s.week >= SEASON_GAMES, g = s.sched[Math.min(s.week, SEASON_GAMES - 1)], o = qpTeams[g.opp], me = s.stand[career.teamIdx];
+                const oRt = ratingsOf(rosterFor(g.opp)); // the opponent's REAL season rating (same one the matchup screen + game use)
                 const cmp = (lbl, a, b) => `<div class="hm-bar"><span>${lbl}</span><b>${a}</b><div class="l"><i style="width:${a}%;background:${a >= b ? '#4ade80' : '#475569'}"></i></div><div class="r"><i style="width:${b}%;background:${b >= a ? '#f87171' : '#475569'}"></i></div><b>${b}</b></div>`;
                 const table = rankTable(s), place = table.findIndex(x => x.i === career.teamIdx) + 1;
                 const rows = table.map((x, k) => `<div class="hm-rank ${x.i === career.teamIdx ? 'me' : ''}"><span>${k + 1}.</span>${hmHelm(x.tm, 'hm-h')}<span>${hmEsc(x.name)}</span><b>${x.w}</b><b>${x.l}</b><b>${x.pf}</b><b>${x.pa}</b></div>`).join('');
@@ -6289,8 +6285,8 @@ const PXS = (function () {
                         <div class="hm-rows"><div class="hm-row"><span>FINAL RECORD</span><b>${recStr(me)}</b></div><div class="hm-row"><span>LEAGUE FINISH</span><b>#${place} OF ${qpTeams.length}</b></div><div class="hm-row"><span>POINTS FOR / AGAINST</span><b>${me.pf} / ${me.pa}</b></div></div>
                         <button class="retro-btn hm-play" id="hm-play" onclick="startNextSeason()">START SEASON ${s.num + 1} ▶</button></div>`
                     : `<div class="hm-card"><div class="hm-hd"><span>NEXT MATCHUP</span><small>WEEK ${s.week + 1} · ${g.home ? 'HOME' : 'AWAY'}</small></div>
-                        <div class="hm-vs"><div class="hm-side">${hmHelm(t)}${hmEsc(t.name.toUpperCase())}<em>OVR ${tr.ovr}</em></div><b>VS</b><div class="hm-side">${hmHelm(o)}${hmEsc(o.name.toUpperCase())}<em>OVR ${o.ovr}</em></div></div>
-                        <div class="hm-cmp">${cmp('OFFENSE', tr.off, o.off)}${cmp('DEFENSE', tr.def, o.def)}</div>
+                        <div class="hm-vs"><div class="hm-side">${hmHelm(t)}${hmEsc(t.name.toUpperCase())}<em>OVR ${tr.ovr}</em></div><b>VS</b><div class="hm-side">${hmHelm(o)}${hmEsc(o.name.toUpperCase())}<em>OVR ${oRt.ovr}</em></div></div>
+                        <div class="hm-cmp">${cmp('OFFENSE', tr.off, oRt.off)}${cmp('DEFENSE', tr.def, oRt.def)}</div>
                         <button class="retro-btn hm-play" id="hm-play" onclick="openMatchup()">PLAY NEXT GAME ▶</button></div>`;
                 content.style.justifyContent = 'flex-start';
                 content.innerHTML = `<div class="of-wrap">
