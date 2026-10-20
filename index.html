@@ -88,11 +88,11 @@
         #dialog-prompt { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #facc15; text-align: right; text-shadow: 2px 2px 0px #000; margin-top: 10px; animation: flashClock 1s infinite; display: none; }
         #mobile-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: max(18px, env(safe-area-inset-bottom)); transition: opacity 0.2s ease; }
         /* Touch controls: flat, minimal, same look as the scoreboard / panels (dark glass + white outline + hard shadow). */
-        :root { --u: 3; --ctl: clamp(84px, 22vmin, 116px); }
-        #joystick-zone { width: var(--ctl); height: var(--ctl); flex: 0 0 auto; background: rgba(255,255,255,0.10); border: 2px solid rgba(255,255,255,0.55); border-radius: 50%; position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; box-sizing: border-box; }
-        #joystick-knob { width: 38%; height: 38%; background: rgba(255,255,255,0.55); border: 0; border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
-        #action-btn { width: calc(var(--ctl) * 0.62); height: calc(var(--ctl) * 0.62); flex: 0 0 auto; background: rgba(255,255,255,0.14); border: 2px solid rgba(255,255,255,0.6); border-radius: 50%; pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: rgba(255,255,255,0.85); font-size: clamp(12px, 3.6vmin, 18px); text-shadow: 1px 1px 0 rgba(0,0,0,0.6); margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; transition: background-color 0.06s, transform 0.06s; }
-        #action-btn:active, #action-btn.active-touch { background: rgba(255,255,255,0.38); transform: scale(0.94); }
+        :root { --u: 3; --ctl: clamp(92px, 24vmin, 128px); }
+        #joystick-zone { width: var(--ctl); height: var(--ctl); flex: 0 0 auto; background: rgba(15,23,42,0.45); border: 3px solid rgba(255,255,255,0.85); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); position: relative; pointer-events: auto; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; touch-action: none; }
+        #joystick-knob { width: 42%; height: 42%; background: rgba(255,255,255,0.92); border: 3px solid #0f172a; border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; position: relative; z-index: 1; }
+        #action-btn { width: calc(var(--ctl) * 0.72); height: calc(var(--ctl) * 0.72); flex: 0 0 auto; background: rgba(220,38,38,0.8); border: 3px solid rgba(255,255,255,0.9); border-radius: 50%; box-shadow: 3px 3px 0 rgba(0,0,0,0.55); pointer-events: auto; display: flex; justify-content: center; align-items: center; font-family: 'Press Start 2P', monospace; color: #fff; font-size: clamp(16px, 4.6vmin, 24px); text-shadow: 2px 2px 0 #000; margin-bottom: 16px; touch-action: none; user-select: none; -webkit-user-select: none; box-sizing: border-box; transition: transform 0.06s, background-color 0.06s, box-shadow 0.06s; }
+        #action-btn:active, #action-btn.active-touch { background: rgba(185,28,28,0.95); transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0,0,0,0.55); }
         /* Pass-type badge (bottom centre, between the stick and the button) */
         #pass-hud { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9; pointer-events: none; display: none; flex-direction: column; align-items: center; gap: 6px; font-family: 'Press Start 2P', monospace; }
         #pass-hud.show { display: flex; }
@@ -535,6 +535,64 @@
         .pk-playbig .pk-pname { color: #fff; font-size: clamp(12px, 4vw, 16px); text-shadow: 3px 3px 0 #000; text-align: center; }
         .pk-playbig .playbook-svg { width: min(240px, 66vw); height: min(240px, 66vw); border-width: 4px; box-shadow: 6px 6px 0 rgba(0,0,0,.8); }
     
+
+
+        /* ===== compact pixel controls + finer field/pass guides ===== */
+        :root { --ctl: clamp(74px, 18vmin, 100px); }
+        #mobile-controls {
+            padding-left: max(14px, env(safe-area-inset-left));
+            padding-right: max(14px, env(safe-area-inset-right));
+            padding-bottom: max(14px, env(safe-area-inset-bottom));
+        }
+        #joystick-zone {
+            width: var(--ctl); height: var(--ctl);
+            background: rgba(8, 20, 12, 0.24);
+            border: 2px solid rgba(242, 244, 224, 0.62);
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.28);
+            margin-bottom: 5px;
+            backdrop-filter: none;
+        }
+        #joystick-knob {
+            width: 34%; height: 34%;
+            background: #e8eadb;
+            border: 1px solid #28352a;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.14);
+            transition: transform 0.035s linear;
+        }
+        #action-btn {
+            width: calc(var(--ctl) * 0.62); height: calc(var(--ctl) * 0.62);
+            background: #c84b43;
+            border: 2px solid #f2f0dc;
+            border-radius: 5px;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.5);
+            font-size: clamp(13px, 3.8vmin, 18px);
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+            margin-bottom: 9px;
+            transition: transform 0.06s, background-color 0.06s, box-shadow 0.06s;
+        }
+        #action-btn:active, #action-btn.active-touch {
+            background: #aa3934;
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+        }
+        #pass-hud { gap: 4px; }
+        #pass-hud-pill {
+            padding: 6px 9px;
+            border-width: 2px;
+            border-radius: 4px;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.55);
+            font-size: 9px;
+            letter-spacing: 0.5px;
+        }
+        #pass-hud-pill svg { width: 18px; height: 12px; }
+        #pass-hud-hint { font-size: 6px; }
+        @media (max-height: 500px) {
+            :root { --ctl: clamp(62px, 15vmin, 78px); }
+            #mobile-controls { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+            #joystick-zone { margin-bottom: 2px; }
+            #action-btn { margin-bottom: 4px; }
+        }
+
 </style>
 </head>
 <body>
@@ -1928,22 +1986,26 @@
         window.addEventListener('mousedown', (e) => {
             if (e.button !== 0 || _hoverNone() || performance.now() - _lastTouchAt < 800) return;
             if (!canAimPass() || (e.target.closest && e.target.closest('#joystick-zone, #action-btn, .retro-btn, #btn-pause, #dialog-box'))) return;
-            if (e.clientX < window.innerWidth * 0.5) togglePassType();
+            if (_passToggleZone(e.clientX, e.clientY)) togglePassType();
         });
         window.addEventListener('contextmenu', (e) => { if (_hoverNone() || !canAimPass()) return; e.preventDefault(); togglePassType(); });
         window.addEventListener('keydown', (e) => { if (e.repeat) return; if ((e.code === 'KeyQ' || e.code === 'KeyE' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && canAimPass()) togglePassType(); });
 
         window.addEventListener('mousedown', (e) => {
+            if (performance.now() - _lastTouchAt < 800) return; // ignore synthetic mouse events after a touch
             if (e.target.closest('#mobile-controls') || e.target.closest('.retro-btn') || e.target.closest('#dialog-box') || e.target.closest('#btn-pause')) return;
-            if (e.clientX < window.innerWidth / 2) return; 
+            if (_passToggleZone(e.clientX, e.clientY)) return; // top strip and left half are reserved for pass-type switching
             if (canAimPass() && aimPointerId === null) { isAimingPass = true; aimPointerId = 'mouse'; aimStartX = e.clientX; aimStartY = e.clientY; aimCurrentX = aimStartX; aimCurrentY = aimStartY; updatePassProjection(); }
         });
         window.addEventListener('mousemove', (e) => { if (isAimingPass && aimPointerId === 'mouse') { aimCurrentX = e.clientX; aimCurrentY = e.clientY; updatePassProjection(); } });
         window.addEventListener('mouseup', (e) => { if (isAimingPass && aimPointerId === 'mouse') { isAimingPass = false; aimPointerId = null; executePass(); } });
         window.addEventListener('touchstart', (e) => {
-            if (!canAimPass()) return; if (e.target.closest('#joystick-zone') || e.target.closest('.retro-btn') || e.target.closest('#btn-pause')) return;
+            if (!canAimPass()) return;
+            if (e.target.closest('#joystick-zone, #action-btn, .retro-btn, #btn-pause, #dialog-box')) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
                 let touch = e.changedTouches[i];
+                // A top-strip tap is a pass-style toggle, not the beginning of an accidental throw.
+                if (_passToggleZone(touch.clientX, touch.clientY)) continue;
                 if (touch.clientX > window.innerWidth / 2 && aimPointerId === null) { isAimingPass = true; aimPointerId = touch.identifier; aimStartX = touch.clientX; aimStartY = touch.clientY; aimCurrentX = aimStartX; aimCurrentY = aimStartY; updatePassProjection(); break; }
             }
         }, {passive: false});
@@ -4504,8 +4566,8 @@ const PXS = (function () {
         function drawRouteLines(play) {
             const paths = computeRoutePaths(play); if (!paths.length) return;
             const Z = camera.zoom;
-            const lw = Math.max(1.3, Math.min(2.2, Z * 0.042));            // line thickness in screen px
-            const headL = Math.max(5, Math.min(9, Z * 0.22)), headW = headL * 0.46;
+            const lw = Math.max(1.0, Math.min(1.4, Z * 0.030));            // fine chalk stroke, fixed in screen pixels
+            const headL = Math.max(3.5, Math.min(5.5, Z * 0.13)), headW = headL * 0.42;
             ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
             ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             paths.forEach(path => {
@@ -4518,8 +4580,8 @@ const PXS = (function () {
                 const bx = e[0] - dx * headL, by = e[1] - dy * headL, px = -dy, py = dx;
                 const shaft = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.lineTo(bx, by); };
                 const head = () => { ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(bx + px * headW, by + py * headW); ctx.lineTo(bx - px * headW, by - py * headW); ctx.closePath(); };
-                ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = lw + 1.6; shaft(); ctx.stroke(); head(); ctx.stroke();
-                ctx.strokeStyle = 'rgba(243,247,239,0.95)'; ctx.fillStyle = 'rgba(243,247,239,0.95)'; ctx.lineWidth = lw; shaft(); ctx.stroke(); head(); ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = lw + 0.65; shaft(); ctx.stroke(); head(); ctx.stroke();
+                ctx.strokeStyle = 'rgba(243,247,239,0.88)'; ctx.fillStyle = 'rgba(243,247,239,0.88)'; ctx.lineWidth = lw; shaft(); ctx.stroke(); head(); ctx.fill();
             });
             ctx.restore();
         }
@@ -4946,7 +5008,7 @@ const PXS = (function () {
             if (fieldLogoImg && fieldLogoImg !== true) { ctx.save(); let logoSize = 22 * PPY; ctx.translate(60 * PPY, 0); ctx.scale((window._mpMirror ? 1 : -1) / X_STRETCH, 1); ctx.globalAlpha = 0.6; ctx.drawImage(fieldLogoImg, -logoSize/2, -logoSize/2, logoSize, logoSize); ctx.restore(); }
 
             if (['PRE_SNAP', 'PLAYING', 'TACKLED', 'PLAY_DEAD', 'PENALTY_SEQUENCE'].includes(gameState) && lineOfScrimmage > 0 && !isPAT) {
-                let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(1.5, PPY * 0.045); ctx.strokeStyle = 'rgba(59, 130, 246, 0.75)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
+                let blx = lineOfScrimmage * PPY; ctx.lineWidth = Math.max(3, PPY * 0.15); ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.beginPath(); ctx.moveTo(blx, fieldTop); ctx.lineTo(blx, fieldTop + fieldHeight); ctx.stroke();
                 let ylx = firstDownLine * PPY; ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.beginPath(); ctx.moveTo(ylx, fieldTop); ctx.lineTo(ylx, fieldTop + fieldHeight); ctx.stroke();
             }
 
@@ -5360,14 +5422,20 @@ const PXS = (function () {
 
                         ctx.save();
                         ctx.translate(indX, indY);
-                        let pulse = 1 + Math.sin(Date.now() / 200) * 0.1;
+                        let pulse = 1 + Math.sin(Date.now() / 150) * 0.2;
                         ctx.scale(pulse, pulse);
                         ctx.rotate(angle);
-                        ctx.fillStyle = '#facc15'; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+                        ctx.fillStyle = '#ef4444'; 
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 3;
                         ctx.beginPath();
-                        ctx.moveTo(9, 0); ctx.lineTo(-5, -6); ctx.lineTo(-2, 0); ctx.lineTo(-5, 6);
+                        ctx.moveTo(20, 0);
+                        ctx.lineTo(-10, -15);
+                        ctx.lineTo(-5, 0);
+                        ctx.lineTo(-10, 15);
                         ctx.closePath();
-                        ctx.fill(); ctx.stroke();
+                        ctx.fill();
+                        ctx.stroke();
                         ctx.restore();
                     }
                 }
@@ -5400,7 +5468,7 @@ const PXS = (function () {
         // ===== PASS AIM RENDERER: trajectory, landing reticle, switch/throw effects, flight trail =====
         const _ease = { outCubic: t => 1 - Math.pow(1 - t, 3), outBack: t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); } };
         function drawPassAim() {
-            const now = performance.now(), Z = camera.zoom, lw = Math.max(1.4, Math.min(2.4, Z * 0.045));
+            const now = performance.now(), Z = camera.zoom, lw = Math.max(1.05, Math.min(1.65, Z * 0.032));
             const aiming = isAimingPass && !!player, inFlight = gameState === 'BALL_IN_AIR' && isPassing;
             const sinceSwitch = now - passFx.switchAt, sinceThrow = now - passFx.throwAt;
             if (!aiming && !inFlight && sinceSwitch > 700 && sinceThrow > 400) { passFx.wasAiming = false; if (passFx.trail.length) passFx.trail.length = 0; return; }
@@ -5421,52 +5489,52 @@ const PXS = (function () {
                 const along = f => { const i = Math.max(0, Math.min(pts.length - 1, f * (pts.length - 1))), i0 = Math.floor(i), i1 = Math.min(pts.length - 1, i0 + 1), k = i - i0; return [pts[i0][0] + (pts[i1][0] - pts[i0][0]) * k, pts[i0][1] + (pts[i1][1] - pts[i0][1]) * k]; };
                 if (pts.length > 1) {
                     if (passType === 'BULLET') {
-                        ctx.strokeStyle = T.glow; ctx.lineWidth = lw + 2.5; line(); ctx.stroke();
-                        ctx.strokeStyle = T.core; ctx.lineWidth = lw; line(); ctx.stroke();
+                        ctx.strokeStyle = T.glow; ctx.lineWidth = lw + 1.0; line(); ctx.stroke();
+                        ctx.strokeStyle = T.core; ctx.lineWidth = Math.max(0.9, lw * 0.78); line(); ctx.stroke();
                         // fast tracer racing down the line
                         const ph = (now / 420) % 1;
-                        for (let k = 0; k < 6; k++) { const f = Math.max(0, ph - k * 0.022); if (f <= 0) continue; const q = along(f * (pts.length > 1 ? 1 : 0)); ctx.globalAlpha = 1 - k / 6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1.2, lw * (1.3 - k * 0.15)), 0, 6.283); ctx.fill(); }
+                        for (let k = 0; k < 6; k++) { const f = Math.max(0, ph - k * 0.022); if (f <= 0) continue; const q = along(f * (pts.length > 1 ? 1 : 0)); ctx.globalAlpha = 1 - k / 6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1.0, lw * (1.0 - k * 0.10)), 0, 6.283); ctx.fill(); }
                         ctx.globalAlpha = 1;
                     } else {
                         // soft marching dots along a high arc, plus a ground line to read the distance
                         const gs = toScreen(player.x, player.y), ge = toScreen(projectedDestX, projectedDestY);
-                        ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(gs.x, gs.y); ctx.lineTo(ge.x, ge.y); ctx.stroke(); ctx.setLineDash([]);
-                        const step = Math.max(9, Z * 0.34), off = (now / 38) % step;
+                        ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.8; ctx.setLineDash([2, 5]); ctx.beginPath(); ctx.moveTo(gs.x, gs.y); ctx.lineTo(ge.x, ge.y); ctx.stroke(); ctx.setLineDash([]);
+                        const step = Math.max(12, Z * 0.46), off = (now / 48) % step;
                         let run = -off; ctx.fillStyle = T.core;
                         for (let i = 1; i < pts.length; i++) {
                             const x0 = pts[i - 1][0], y0 = pts[i - 1][1], x1 = pts[i][0], y1 = pts[i][1], sl = Math.hypot(x1 - x0, y1 - y0);
-                            while (run + step <= sl) { run += step; const f = run / (sl || 1); const dx = x0 + (x1 - x0) * f, dy = y0 + (y1 - y0) * f; ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.3, lw * 0.85), 0, 6.283); ctx.fill(); }
+                            while (run + step <= sl) { run += step; const f = run / (sl || 1); const dx = x0 + (x1 - x0) * f, dy = y0 + (y1 - y0) * f; ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.0, lw * 0.68), 0, 6.283); ctx.fill(); }
                             run -= sl;
                         }
                         // floating sparkles drifting up the arc
-                        for (let k = 0; k < 3; k++) { const f = ((now / 1500) + k / 3) % 1, q = along(f), pulse = 0.5 + 0.5 * Math.sin(now / 160 + k * 2); ctx.globalAlpha = 0.35 + 0.5 * pulse; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1] - 2 - pulse * 2, 1.6 + pulse * 1.4, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
+                        for (let k = 0; k < 2; k++) { const f = ((now / 1700) + k / 2) % 1, q = along(f), pulse = 0.5 + 0.5 * Math.sin(now / 190 + k * 2); ctx.globalAlpha = 0.25 + 0.35 * pulse; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1] - 1.5 - pulse * 1.5, 1.1 + pulse * 0.7, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
                     }
                 }
                 // landing reticle (flat on the grass)
                 const ds = toScreen(projectedDestX, projectedDestY);
                 const snap = sinceSwitch < 300 ? 1 + 0.7 * (1 - _ease.outBack(Math.min(1, sinceSwitch / 300))) : 1;
                 if (passType === 'BULLET') {
-                    const R = 1.0 * snap * (1 + 0.06 * Math.sin(now / 80)), rx = R * gx, ry = R * gy, tk = 0.42;
+                    const R = 0.76 * snap * (1 + 0.045 * Math.sin(now / 100)), rx = R * gx, ry = R * gy, tk = 0.40;
                     ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.beginPath();
                     [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { ctx.moveTo(ds.x + sx * rx, ds.y + sy * ry * (1 - tk)); ctx.lineTo(ds.x + sx * rx, ds.y + sy * ry); ctx.lineTo(ds.x + sx * rx * (1 - tk), ds.y + sy * ry); });
-                    ctx.stroke(); ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.5, lw), 0, 6.283); ctx.fill();
+                    ctx.stroke(); ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.1, lw * 0.75), 0, 6.283); ctx.fill();
                 } else {
-                    const R = 1.9 * snap, rx = R * gx, ry = R * gy;
-                    ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.globalAlpha = 0.9; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -now / 70;
+                    const R = 1.32 * snap, rx = R * gx, ry = R * gy;
+                    ctx.strokeStyle = T.color; ctx.lineWidth = Math.max(1.0, lw * 0.85); ctx.globalAlpha = 0.86; ctx.setLineDash([3, 4]); ctx.lineDashOffset = -now / 90;
                     ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
                     const ph = (now / 950) % 1, ir = 1 - 0.7 * ph;                 // inner ring shrinks like the ball dropping in
-                    ctx.globalAlpha = 0.85 * (1 - ph); ctx.strokeStyle = T.core; ctx.lineWidth = Math.max(1, lw * 0.8); ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx * ir, ry * ir, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1;
-                    ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.3, lw * 0.8), 0, 6.283); ctx.fill();
+                    ctx.globalAlpha = 0.75 * (1 - ph); ctx.strokeStyle = T.core; ctx.lineWidth = Math.max(0.8, lw * 0.65); ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx * ir, ry * ir, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1;
+                    ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.0, lw * 0.65), 0, 6.283); ctx.fill();
                 }
             }
 
             // ---------- switch burst + release pop at the QB's hands ----------
             const burst = (wx, wy, age, dur, type) => {
                 if (age < 0 || age > dur) return; const u = age / dur, C = PASS_TYPES[type], sc = toScreen(wx, wy), cx = sc.x, cy = sc.y - 1.2 * zH;
-                ctx.globalAlpha = 1 - u; ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.5, lw * (1.4 - u));
-                ctx.beginPath(); ctx.arc(cx, cy, 6 + _ease.outCubic(u) * (type === 'BULLET' ? 30 : 22), 0, 6.283); ctx.stroke();
-                if (type === 'BULLET') { ctx.strokeStyle = C.core; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.beginPath(); for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.39, r0 = 10 + _ease.outCubic(u) * 18, r1 = r0 + 9 * (1 - u); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); } ctx.stroke(); }
-                else { ctx.fillStyle = C.core; for (let k = 0; k < 7; k++) { const a = k * 6.283 / 7, r = 8 + _ease.outCubic(u) * 14; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r - u * 14, Math.max(1, 2.2 * (1 - u)), 0, 6.283); ctx.fill(); } }
+                ctx.globalAlpha = 1 - u; ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.0, lw * (1.1 - u));
+                ctx.beginPath(); ctx.arc(cx, cy, 4 + _ease.outCubic(u) * (type === 'BULLET' ? 16 : 13), 0, 6.283); ctx.stroke();
+                if (type === 'BULLET') { ctx.strokeStyle = C.core; ctx.lineWidth = Math.max(0.9, lw * 0.7); ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + 0.39, r0 = 7 + _ease.outCubic(u) * 9, r1 = r0 + 5 * (1 - u); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); } ctx.stroke(); }
+                else { ctx.fillStyle = C.core; for (let k = 0; k < 5; k++) { const a = k * 6.283 / 5, r = 6 + _ease.outCubic(u) * 9; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r - u * 8, Math.max(0.8, 1.5 * (1 - u)), 0, 6.283); ctx.fill(); } }
                 ctx.globalAlpha = 1;
             };
             if (player && gameState === 'PLAYING') burst(player.x, player.y, sinceSwitch, 420, passType);
@@ -5476,12 +5544,12 @@ const PXS = (function () {
             if (inFlight) {
                 const C = PASS_TYPES[passFx.thrown] || T, isB = passFx.thrown === 'BULLET';
                 const ds = toScreen(ball.destX, ball.destY), R = Math.max(0.3, Math.min(2.0, ball.z * 0.5)), rx = R * gx, ry = R * gy;
-                ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke();
+                ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(0.9, lw * 0.72); ctx.globalAlpha = 0.82; ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(ds.x - 3, ds.y); ctx.lineTo(ds.x + 3, ds.y); ctx.moveTo(ds.x, ds.y - 2); ctx.lineTo(ds.x, ds.y + 2); ctx.stroke(); ctx.globalAlpha = 1;
                 passFx.trail.push({ x: ball.x, y: ball.y, z: ball.z }); const maxT = isB ? 16 : 26; while (passFx.trail.length > maxT) passFx.trail.shift();
                 const tr = passFx.trail.map(q => { const sc = toScreen(q.x, q.y); return [sc.x, sc.y - q.z * zH]; });
-                if (isB) { for (let i = 1; i < tr.length; i++) { const f = i / tr.length; ctx.globalAlpha = f * 0.8; ctx.strokeStyle = f > 0.7 ? '#fff' : C.color; ctx.lineWidth = Math.max(1, lw * 2.2 * f); ctx.beginPath(); ctx.moveTo(tr[i - 1][0], tr[i - 1][1]); ctx.lineTo(tr[i][0], tr[i][1]); ctx.stroke(); } }
-                else { for (let i = 0; i < tr.length; i += 2) { const f = i / tr.length; ctx.globalAlpha = f * 0.75; ctx.fillStyle = f > 0.6 ? '#fff' : C.color; ctx.beginPath(); ctx.arc(tr[i][0], tr[i][1], Math.max(1, lw * 1.2 * f), 0, 6.283); ctx.fill(); } }
+                if (isB) { for (let i = 1; i < tr.length; i++) { const f = i / tr.length; ctx.globalAlpha = f * 0.58; ctx.strokeStyle = f > 0.7 ? '#fff' : C.color; ctx.lineWidth = Math.max(0.8, lw * 1.25 * f); ctx.beginPath(); ctx.moveTo(tr[i - 1][0], tr[i - 1][1]); ctx.lineTo(tr[i][0], tr[i][1]); ctx.stroke(); } }
+                else { for (let i = 0; i < tr.length; i += 2) { const f = i / tr.length; ctx.globalAlpha = f * 0.58; ctx.fillStyle = f > 0.6 ? '#fff' : C.color; ctx.beginPath(); ctx.arc(tr[i][0], tr[i][1], Math.max(0.8, lw * 0.75 * f), 0, 6.283); ctx.fill(); } }
                 ctx.globalAlpha = 1;
             } else if (passFx.trail.length) passFx.trail.length = 0;
             ctx.restore();
