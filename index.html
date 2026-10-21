@@ -109,7 +109,7 @@
         }
 
         // ===== The one player you control =====
-        const player = { x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0 };
+        const player = { x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0, aimPoseMix: 0 };
         camera.target = player;
         // Offensive lineman at the 20 (field x=30), facing left, four-point stance
         const olineman = { x: 30, y: 0, facing: -1, girth: 1.3, skinTone: '#8d5524' };
@@ -133,6 +133,67 @@
         };
         const linemanSprite = makeLinemanSprite(true), linemanSpriteNoBall = makeLinemanSprite(false);   // only the center holds the ball
 
+
+        // ===== Ball: snap, catch, aim =====
+        // state: 'center' (in the center's hands) -> 'snap' (flying back) -> 'qb' (QB holds it)
+        const ball = { state: 'center', x: 0, y: 0, z: 0, t: 0, sx: 0, sy: 0 };
+        const SNAP_FRAMES = 26;
+        const BALL_PAL = { o: '#b45309', L: '#fafafa', d: '#78350f' };
+        const makeBallSprite = (rows) => {
+            const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length; const g = c.getContext('2d');
+            for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++) { const k = rows[y][x]; if (k !== '.') { g.fillStyle = BALL_PAL[k]; g.fillRect(x, y, 1, 1); } }
+            return c;
+        };
+        // tumble frames: flat -> diagonal -> upright -> diagonal (mirrored)
+        const BALL_FRAMES = [
+            makeBallSprite([".oooo.", "oLLLLo", ".dddd."]),
+            makeBallSprite(["...oo", "..oLo", ".oLo.", "oLo..", "oo..."]),
+            makeBallSprite([".o.", "oLo", "oLo", "odo", ".d."]),
+            makeBallSprite(["oo...", "oLo..", ".oLo.", "..oLo", "...oo"])
+        ];
+        function startSnap() {
+            ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
+        }
+        function updateBall() {
+            if (ball.state !== 'snap') return;
+            ball.t++;
+            const k = Math.min(1, ball.t / SNAP_FRAMES);
+            // flies backwards (away from the line) to wherever the QB is standing right now
+            ball.x = ball.sx + (player.x - ball.sx) * k; ball.y = ball.sy + (player.y - ball.sy) * k;
+            ball.z = 0.8 + (1.6 - 0.8) * k + Math.sin(Math.PI * k) * 0.9;
+            if (k >= 1) ball.state = 'qb';   // caught
+        }
+
+        // Drag-back aiming (touch or mouse on the field): pull back = throw the opposite way, farther pull = farther throw
+        const aim = { active: false, id: null, sx: 0, sy: 0, cx: 0, cy: 0, tx: 0, ty: 0 };
+        const MIN_PULL = 14, MAX_PULL = 120, MIN_THROW_YARDS = 6, MAX_THROW_YARDS = 50;
+        function aimBegin(id, x, y) { if (aim.active) return; aim.active = true; aim.id = id; aim.sx = aim.cx = aim.tx = x; aim.sy = aim.cy = aim.ty = y; }
+        function aimMove(x, y) { aim.tx = x; aim.ty = y; }
+        function aimEnd() { aim.active = false; aim.id = null; }
+        // Ease the live aim point toward touch/mouse input so event-rate differences do not make the arc jump.
+        function updateAimSmoothing() {
+            if (!aim.active) return;
+            const ease = 0.42;
+            aim.cx += (aim.tx - aim.cx) * ease;
+            aim.cy += (aim.ty - aim.cy) * ease;
+            if (Math.abs(aim.tx - aim.cx) < 0.12) aim.cx = aim.tx;
+            if (Math.abs(aim.ty - aim.cy) < 0.12) aim.cy = aim.ty;
+        }
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; aimBegin(t.identifier, t.clientX, t.clientY); }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!aim.active) return; for (const t of e.changedTouches) if (t.identifier === aim.id) aimMove(t.clientX, t.clientY); }, { passive: false });
+        const aimTouchEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === aim.id) aimEnd(); };
+        canvas.addEventListener('touchend', aimTouchEnd); canvas.addEventListener('touchcancel', aimTouchEnd);
+        canvas.addEventListener('mousedown', (e) => aimBegin('mouse', e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => { if (aim.active && aim.id === 'mouse') aimMove(e.clientX, e.clientY); });
+        window.addEventListener('mouseup', () => { if (aim.id === 'mouse') aimEnd(); });
+        function computeThrow() {
+            if (!aim.active || ball.state !== 'qb') return null;
+            const dx = aim.sx - aim.cx, dy = aim.sy - aim.cy, len = Math.hypot(dx, dy);
+            if (len < MIN_PULL) return null;
+            const power = Math.min(1, (len - MIN_PULL) / (MAX_PULL - MIN_PULL));
+            const d = screenInputToWorldDir(dx, dy);
+            return { dx: d.x, dy: d.y, range: MIN_THROW_YARDS + power * (MAX_THROW_YARDS - MIN_THROW_YARDS), power };
+        }
 
         // ===== Field (pixel art field, unchanged) =====
         function buildPixelField(team) {
@@ -431,35 +492,46 @@ const PXS = (function () {
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
         const tuck = !!o.hasBall && o.armA2 > -0.5;   // ball tucked under the front arm, held against the ribs (dives still reach out with it)
-        // football: pixel ellipse, tilted along (dirx,diry), laces on top, darker belly underneath
+        // Compact, tapered pixel football with a visible center seam and short laces.
+        // It is drawn before the throwing hand so the hand/forearm naturally overlaps it.
         const drawBall = (bx, by, ang, bs) => {
-            const ca = Math.cos(ang), sa = Math.sin(ang), A = 2.7 * bs, B = 1.7 * bs;
+            const ca = Math.cos(ang), sa = Math.sin(ang), A = 3.45 * bs, B = 2.0 * bs;
             for (let y = Math.floor(by - A - 1); y <= Math.ceil(by + A + 1); y++) for (let x = Math.floor(bx - A - 1); x <= Math.ceil(bx + A + 1); x++) {
-                const dx = x + .5 - bx, dy = y + .5 - by; const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
-                if ((u * u) / (A * A) + (v * v) / (B * B) > 1) continue;
-                let c = v > B * .35 ? pack(120, 53, 15) : pack(180, 83, 9);
-                if (Math.abs(u) < .8 * bs && v < -.1) c = pack(250, 250, 250);
+                const dx = x + .5 - bx, dy = y + .5 - by;
+                const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+                const along = Math.max(0, 1 - Math.abs(u) / A);
+                const halfWidth = B * Math.pow(along, 0.62); // pointed football ends, not a round oval
+                if (Math.abs(v) > halfWidth) continue;
+                let c = v > halfWidth * 0.18 ? pack(120, 53, 15) : pack(180, 83, 9);
+                if (Math.abs(u) > A * 0.78) c = pack(120, 53, 15);
+                // Short white lace bar plus a center seam; these stay legible at small sprite sizes.
+                if (Math.abs(u) < A * 0.31 && Math.abs(v) < 0.28 * bs) c = pack(250, 250, 250);
+                if (Math.abs(u) < 0.58 * bs && Math.abs(v) < halfWidth * 0.78) c = pack(250, 250, 250);
                 put(x, y, c);
             }
             flush(0);
         };
         let fa;
         if (tuck) {
-            // geometry of the front arm, computed first so the ball can sit in the crook of it
+            // Geometry first: tuck the ball against the ribs, then draw the forearm over it.
             const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th, B0 = A0 - o.armB2;
             const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
             const hx0 = ex0 - Math.sin(B0) * 2.3, hy0 = ey0 + Math.cos(B0) * 2.3;
             const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1)) * 0.8;
-            // ball rests just under the forearm, nose pointing forward past the hand, tail tucked back at the elbow/ribs
-            drawBall((ex0 + hx0) / 2 + 1.0, (ey0 + hy0) / 2 + 1.4, 0.18, bs);
-            fa = arm(o.armA2, o.armB2, 0);   // forearm + hand wrap over the top of the ball
+            drawBall((ex0 + hx0) / 2 + 0.8, (ey0 + hy0) / 2 + 1.15, 0.18, bs);
+            fa = arm(o.armA2, o.armB2, 0);
+        } else if (o.hasBall) {
+            // In the throwing pose, place the ball just beyond the hand and render the hand over its edge.
+            const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th, B0 = A0 - o.armB2;
+            const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
+            const hx0 = ex0 - Math.sin(B0) * 2.3, hy0 = ey0 + Math.cos(B0) * 2.3;
+            const dirx = -Math.sin(B0), diry = Math.cos(B0);
+            const bx = hx0 + dirx * 0.42 + 0.18, by = hy0 + diry * 0.38 - 0.18;
+            const ang = Math.atan2(diry, dirx) * 0.34 + (o.pitch ? -0.10 : 0.15);
+            drawBall(bx, by, ang, Math.max(0.9, Math.min(1.5, o.ballScale || 1)));
+            fa = arm(o.armA2, o.armB2, 0);
         } else {
             fa = arm(o.armA2, o.armB2, 0);
-        }
-        if (o.hasBall && !tuck) {
-            const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
-            const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15);
-            drawBall(bx, by, ang, Math.max(0.7, Math.min(1.5, o.ballScale || 1)));
         }
         cx.putImageData(img, 0, 0);
         return cv;
@@ -526,9 +598,15 @@ const PXS = (function () {
             return { ix, iy };
         }
         function update() {
+            updateAimSmoothing();
+            const aimPoseTarget = aim.active && ball.state === 'qb' && !player.isDiving ? 1 : 0;
+            player.aimPoseMix += (aimPoseTarget - player.aimPoseMix) * 0.30;
+            if (Math.abs(aimPoseTarget - player.aimPoseMix) < 0.006) player.aimPoseMix = aimPoseTarget;
             const { ix, iy } = readInput();
             const spaceDown = !!keys['Space'];
-            if (spaceDown && !spaceWasDown && !player.isDiving) {
+            if (spaceDown && !spaceWasDown && ball.state === 'center') {
+                startSnap();   // first press = snap the ball back to the QB
+            } else if (spaceDown && !spaceWasDown && ball.state !== 'snap' && !player.isDiving) {
                 player.isDiving = true; player.diveTimer = 0;
                 let dx = ix, dy = iy; if (dx === 0 && dy === 0) dx = player.facing;
                 const dd = screenInputToWorldDir(dx, dy); player.diveDirX = dd.x; player.diveDirY = dd.y;
@@ -561,6 +639,8 @@ const PXS = (function () {
             if (player.runAmt > 0.02) player.animTimer += 0.19 * Math.max(0.4, player.runAmt); else { player.animTimer = 0; player.runAmt = 0; }
             player.x = Math.max(0, Math.min(FIELD_LENGTH_YARDS, player.x));
             player.y = Math.max(-FIELD_WIDTH_YARDS / 2, Math.min(FIELD_WIDTH_YARDS / 2, player.y));
+            updateBall();
+            const th = computeThrow(); if (th && Math.abs(th.dx) > 0.05) player.facing = th.dx > 0 ? 1 : -1;
             // camera follow (same smoothing as the original)
             camera.pitch = FIELD_VIEW_PITCH; camera.skew = 0;
             camera.x = player.x; camera.y = camYFollow(player.y);
@@ -595,7 +675,7 @@ const PXS = (function () {
             for (const o of offensiveLine.slice().sort((a, b) => a.y - b.y)) {   // back-to-front so nearer linemen overlap farther ones
                 const os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
                 const ospx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
-                const spr = o === olineman ? linemanSprite : linemanSpriteNoBall;
+                const spr = (o === olineman && ball.state === 'center') ? linemanSprite : linemanSpriteNoBall;
                 ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1);
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(spr, Math.round(-18 * ospx * 0.5), Math.round(3 * oScale - spr.height * ospx), Math.round(spr.width * ospx), Math.round(spr.height * ospx));
@@ -658,8 +738,22 @@ const PXS = (function () {
                     leanA = 0.2 * bl; bobPx = L(17 - idleHy, runBob);
                 }
             }
+            if (!p.isDiving && p.aimPoseMix > 0.001 && ball.state === 'qb') {
+                const am = p.aimPoseMix;
+                const mix = (a, b) => a + (b - a) * am;
+                // Back arm stays balanced; front arm raises the football beside the helmet.
+                pitchQ = mix(pitchQ, 0.16);
+                armAngle1 = mix(armAngle1, -0.62);
+                armAngle2 = mix(armAngle2, -2.18);
+                aB1 = mix(aB1, 0.92); aB2 = mix(aB2, 0.78);
+                legAngle1 = mix(legAngle1, 0.24); legAngle2 = mix(legAngle2, -0.24);
+                kn1 = mix(kn1, 0.34); kn2 = mix(kn2, 0.36);
+                leanA = mix(leanA, -0.06);
+                bobPx = mix(bobPx, 0);
+                plantPose = true;
+            }
             const spriteCanvas = PXS.cached({
-                facing: p.facing, girth: p.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4,
+                facing: p.facing, girth: p.girth, isRef: false, hasFlag: false, hasBall: ball.state === 'qb', ballScale: 0.98,
                 skin: p.skinTone, jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff',
                 pitch: pitchQ, lean: leanA, plant: plantPose, bob: bobPx, breath: breathPx, toe: 1.5,
                 armA1: armAngle1, armA2: armAngle2, armB1: aB1, armB2: aB2, legA1: legAngle1, legA2: legAngle2, legK1: kn1, legK2: kn2
@@ -668,6 +762,70 @@ const PXS = (function () {
             ctx.imageSmoothingEnabled = spx < 1.6;
             const spriteTop = Math.round(3 * pScale + (-diveHeight + (plantPose ? 0 : groundDrop)) * pScale - PXS.GROUND * spx);
             ctx.drawImage(spriteCanvas, Math.round(-PXS.HX * spx), spriteTop, Math.round(PXS.W * spx), Math.round(PXS.H * spx));
+            ctx.restore();
+
+            drawSnapBall(spx);
+            drawAimLine(spx);
+        }
+
+        // flying snap: pixel ball (tumbling) + a blocky shadow on the turf
+        function drawSnapBall(spx) {
+            if (ball.state !== 'snap') return;
+            const s = Math.max(2, Math.round(spx * 0.85)), lift = camera.zoom * 0.9;
+            const g = toScreen(ball.x, ball.y);
+            ctx.imageSmoothingEnabled = false;
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            ctx.fillRect(Math.round(g.x - 2 * s), Math.round(g.y - s * 0.5), 4 * s, s);
+            const spr = BALL_FRAMES[Math.floor(ball.t / 3) % BALL_FRAMES.length];
+            const w = spr.width * s, h = spr.height * s;
+            ctx.drawImage(spr, Math.round(g.x - w / 2), Math.round(g.y - ball.z * lift - h / 2), w, h);
+        }
+
+        // Smooth trajectory preview: an evenly sampled arc with a fine dotted chalk stroke.
+        // Unlike large grid-snapped blocks, the small round dashes do not jump between screen cells.
+        function drawAimLine(spx) {
+            const th = computeThrow();
+            if (!th) return;
+            const lift = camera.zoom * 0.9;
+            const peak = 1.5 + th.range * 0.12, z0 = 2.0, N = 120;
+            const pts = [];
+            for (let i = 0; i <= N; i++) {
+                const k = i / N;
+                const worldX = player.x + th.dx * th.range * k;
+                const worldY = player.y + th.dy * th.range * k;
+                const ground = toScreen(worldX, worldY);
+                const z = z0 * (1 - k) + 4 * peak * k * (1 - k);
+                pts.push({ x: ground.x, y: ground.y - z * lift, gx: ground.x, gy: ground.y });
+            }
+
+            ctx.save();
+            ctx.imageSmoothingEnabled = true;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            // Deep outline preserves contrast against bright and dark grass; the white dashes remain delicate.
+            ctx.setLineDash([Math.max(2.2, spx * 0.52), Math.max(4.8, spx * 1.28)]);
+            ctx.strokeStyle = 'rgba(6, 35, 19, 0.82)';
+            ctx.lineWidth = Math.max(3.1, spx * 0.82);
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(255, 255, 244, 0.98)';
+            ctx.lineWidth = Math.max(1.6, spx * 0.42);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Small outlined yellow landing cross, centered exactly on the projected landing point.
+            const L = pts[pts.length - 1], arm = Math.max(5.5, Math.min(9, spx * 1.85));
+            ctx.lineCap = 'square';
+            ctx.beginPath();
+            ctx.moveTo(L.gx - arm, L.gy); ctx.lineTo(L.gx + arm, L.gy);
+            ctx.moveTo(L.gx, L.gy - arm); ctx.lineTo(L.gx, L.gy + arm);
+            ctx.strokeStyle = 'rgba(5, 35, 18, 0.90)'; ctx.lineWidth = 4.4; ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(L.gx - arm, L.gy); ctx.lineTo(L.gx + arm, L.gy);
+            ctx.moveTo(L.gx, L.gy - arm); ctx.lineTo(L.gx, L.gy + arm);
+            ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2.0; ctx.stroke();
             ctx.restore();
         }
 
