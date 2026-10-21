@@ -150,10 +150,177 @@
         const rushers = [0, 1, 3, 4].map((idx, i) => {   // tackle, guard, guard, tackle (the center, idx 2, is the helper)
             const bl = offensiveLine[idx];
             return { blk: bl, dl: { x: bl.x - DL_GAP, y: bl.y, hx: bl.x - DL_GAP, hy: bl.y, vx: 0, vy: 0, facing: 1, girth: 1.2, skinTone: DL_SKINS[i] },
-                     vx: 0, vy: 0, anim: 0, engaged: 0, engagedNow: false, beaten: false, beatAt: 240, phase: 0, toQ: { x: 1, y: 0 } };
+                     vx: 0, vy: 0, anim: 0, engaged: 0, engagedNow: false, beaten: false, beatAt: 240, phase: 0, toQ: { x: 1, y: 0 }, lane: [-2.2, -0.8, 0.8, 2.2][i] };
         });
         const bodies = [...offensiveLine.map(o => ({ o, team: 0 })), ...rushers.map(r => ({ o: r.dl, team: 1, r }))];
         const D = { live: false, t: 0, sacked: false, help: rushers[1] };
+        // Cornerbacks: one over each wide receiver (the two outside WRs and the slot WR; the tight end stays with the line).
+        // They line up off the receiver, then back-pedal to a cushion and mirror him once the ball is hiked.
+        const CB_GAP = 3.5, CB_BAIL = 6.0;   // yards off the receiver at the line / how deep they back up after the snap
+        const CB_SKINS = ['#6b4423', '#8a5a3a', '#7d5233'];
+        const corners = [0, 1, 2].map((idx, i) => {
+            const w = receivers[idx];
+            return { wr: w, x: w.x - CB_GAP, y: w.y, hx: w.x - CB_GAP, hy: w.y, vx: 0, vy: 0, facing: 1, girth: 1.0, skinTone: CB_SKINS[i], anim: i * 1.7 };
+        });
+        const CB_SPEED = 0.1;   // a hair slower than the receivers, so a good route gets separation
+        // Shared helpers for every defensive back: movement mode (drives the animation) and an intercept point that leads a moving target
+        function setDefMode(o, chase, faceX) {
+            const spd = Math.hypot(o.vx, o.vy);
+            const want = chase ? spd > 0.05 : Math.abs(o.vx) > 0.07;
+            o.sprint = o.sprint ? (chase ? spd > 0.04 : Math.abs(o.vx) > 0.05) : want;   // hysteresis so he doesn't flicker between poses
+            o.turned = o.sprint;
+            o.mode = o.sprint ? 'sprint' : spd > 0.02 ? ((o.vx < 0 && Math.abs(o.vx) >= Math.abs(o.vy)) ? 'backpedal' : 'shuffle') : 'ready';
+            if (o.sprint) o.facing = Math.abs(o.vx) > 0.015 ? (o.vx >= 0 ? 1 : -1) : o.facing;
+            else o.facing = faceX;
+        }
+        function leadPoint(t, from, sp) {   // where to run to cut off a moving target
+            const d = Math.hypot(t.x - from.x, t.y - from.y), f = Math.min(30, d / Math.max(sp, 0.05)) * 0.65;
+            return { x: t.x + (t.vx || 0) * f, y: t.y + (t.vy || 0) * f };
+        }
+        function updateCorners() {
+            const ps = ball.state, covering = D.live && ps !== 'center';
+            for (const c of corners) {
+                const w = c.wr;
+                let tx = c.hx, ty = c.hy, sp = 0.12, chase = false, hold = false;
+                if (covering) {
+                    const dBall = Math.hypot(c.x - RT.cx, c.y - RT.cy);
+                    if (ps === 'caught' && RT.carrier) { const p = leadPoint(RT.carrier, c, 0.115); tx = p.x; ty = p.y; sp = 0.115; chase = true; }   // tackle angle on the carrier
+                    else if (ps === 'thrown' && RT.target && dBall < 16) { tx = RT.cx; ty = RT.cy; sp = 0.125; chase = true; }                     // break on the ball
+                    else if (ps === 'loose' || D.sacked) { hold = true; }
+                    else {
+                        // man coverage: trail the receiver with inside leverage. He plays off the line, then closes his cushion the moment the receiver cuts.
+                        const cut = Math.min(1, Math.abs(w.vy) / 0.07);
+                        const cushion = (CB_GAP + Math.min(1.5, D.t * 0.02)) * (1 - 0.5 * cut);
+                        const inside = Math.abs(w.y) > 2.5 ? (w.y < 0 ? 1 : -1) * 0.8 * (1 - 0.6 * cut) : 0;
+                        tx = w.x + w.vx * 8 - cushion; ty = w.y + w.vy * 8 + inside; sp = CB_SPEED + 0.012 * cut;
+                    }
+                }
+                const dx = tx - c.x, dy = ty - c.y, dist = Math.hypot(dx, dy);
+                let step = hold ? 0 : Math.min(sp, dist); if (chase && dist < 1.1) step = 0;
+                const mx = dist > 0.001 ? dx / dist * step : 0, my = dist > 0.001 ? dy / dist * step : 0;
+                c.vx += (mx - c.vx) * 0.35; c.vy += (my - c.vy) * 0.35;
+                if (!covering && dist < 0.02) { c.x = tx; c.y = ty; c.vx = c.vy = 0; } else { c.x += c.vx; c.y += c.vy; }
+                c.anim += Math.hypot(c.vx, c.vy) * 3;
+                c.reach = chase && ps === 'thrown' && dBallSafe(c) < 3.2;
+                setDefMode(c, chase || !covering, w.x >= c.x ? 1 : -1);
+            }
+        }
+        function dBallSafe(o) { return Math.hypot(o.x - RT.cx, o.y - RT.cy); }
+
+        // ===== Receiver routes: every wide receiver runs 5 or 10 yards straight, then slants inward. When a pass is thrown, the receiver nearest to where it comes down adjusts to it. =====
+        const wideReceivers = [receivers[0], receivers[1], receivers[2]];
+        for (const w of receivers) { w.hx = w.x; w.hy = w.y; w.vx = 0; w.vy = 0; w.anim = 0; w.isWR = wideReceivers.includes(w); }
+        const WR_SPEED = 0.105, WR_ADJ_SPEED = 0.17, CATCH_R = 2.0, CATCH_Z = 2.4;
+        const RT = { live: false, t: 0, target: null, carrier: null, catchT: 0, cx: 0, cy: 0, kc: 1 };
+        function routesStart() {
+            RT.live = true; RT.t = 0; RT.target = null; RT.carrier = null; RT.catchT = 0;
+            for (const w of wideReceivers) { w.x = w.hx; w.y = w.hy; w.vx = w.vy = 0; w.stem = Math.random() < 0.5 ? 5 : 10; w.facing = -1; }   // 5 or 10 yards before the slant
+            for (const c of corners) { c.x = c.hx; c.y = c.hy; c.vx = c.vy = 0; c.turned = false; c.sprint = false; c.mode = 'ready'; c.reach = false; }
+            for (const b of backers) { b.x = b.hx; b.y = b.hy; b.vx = b.vy = 0; b.turned = false; b.sprint = false; b.mode = 'ready'; b.reach = false; b.thr = null; }
+        }
+        // a pass has been thrown: find where it comes down within reach, and send the receiver nearest to that spot to it
+        function assignCatch() {
+            let kc = 1;
+            for (let i = 0; i <= 30; i++) { const k = 0.85 + 0.15 * i / 30; if (2.0 * (1 - k) + 4 * ball.peak * k * (1 - k) <= CATCH_Z) { kc = k; break; } }
+            const tc = kc * ball.T, cx = ball.ox + ball.dx * ball.range * kc, cy = ball.oy + ball.dy * ball.range * kc;
+            let best = null, bd = 1e9;
+            for (const w of wideReceivers) { const d = Math.hypot(cx - (w.x + w.vx * tc), cy - (w.y + w.vy * tc)); if (d < bd) { bd = d; best = w; } }
+            RT.target = best; RT.cx = cx; RT.cy = cy; RT.kc = kc;
+        }
+        function updateReceivers() {
+            if (!RT.live) return;
+            const ps = ball.state;
+            if (ps === 'center') {   // play is over: jog back to the line
+                let home = true;
+                for (const w of wideReceivers) {
+                    const dx = w.hx - w.x, dy = w.hy - w.y, d = Math.hypot(dx, dy);
+                    if (d > 0.03) { const st = Math.min(0.12, d); w.vx = dx / d * st; w.vy = dy / d * st; w.x += w.vx; w.y += w.vy; w.anim += st * 3; w.facing = w.vx > 0 ? 1 : -1; home = false; }
+                    else { w.x = w.hx; w.y = w.hy; w.vx = w.vy = 0; }
+                }
+                if (home) { RT.live = false; RT.target = null; RT.carrier = null; for (const w of wideReceivers) w.facing = -1; }
+                return;
+            }
+            RT.t++;
+            const ramp = Math.min(1, RT.t / 10);
+            for (const w of wideReceivers) {
+                let dirx = 0, diry = 0, sp = 0, smooth = 0.3;
+                if (w === RT.carrier) {   // caught it: keeps running upfield
+                    const l = Math.hypot(w.vx, w.vy) || 1; dirx = w.vx / l; diry = w.vy / l; sp = WR_SPEED; if (l === 1 && !w.vx && !w.vy) { dirx = -1; }
+                } else if (ps === 'loose') {   // incomplete (or the QB was sacked): the play is dead, he eases up
+                    sp = 0; smooth = 0.12;
+                } else if (w === RT.target && ps === 'thrown') {   // adjusts to the pass: goes to where it comes down
+                    const dx = RT.cx - w.x, dy = RT.cy - w.y, d = Math.hypot(dx, dy);
+                    if (d > 0.15) { dirx = dx / d; diry = dy / d; sp = Math.min(WR_ADJ_SPEED, d); }
+                } else {   // the slant: straight up the field for 5 or 10 yards, then 45 degrees toward the middle
+                    if (w.hx - w.x >= w.stem && Math.abs(w.y) > 2.5) { dirx = -0.707; diry = w.hy < 0 ? 0.707 : -0.707; }
+                    else dirx = -1;
+                    sp = WR_SPEED * ramp;
+                }
+                w.vx += (dirx * sp - w.vx) * smooth; w.vy += (diry * sp - w.vy) * smooth;
+                w.x += w.vx; w.y += w.vy; w.anim += Math.hypot(w.vx, w.vy) * 3;
+                w.facing = w.vx > 0.04 ? 1 : -1;
+            }
+        }
+
+        // ===== Two middle linebackers (hook zones, a few yards behind the DL) and two deep safeties (a deep half each) =====
+        const mkBacker = (role, x, y, skin, girth, side) => ({ role, side, x, y, hx: x, hy: y, vx: 0, vy: 0, facing: 1, girth, skinTone: skin, anim: x + y, turned: false, sprint: false, mode: 'ready', reach: false, thr: null });
+        const linebackers = [mkBacker('lb', 24.5, -2.4, '#6b4423', 1.15, -1), mkBacker('lb', 24.5, 2.4, '#8a5a3a', 1.15, 1)];
+        const safeties = [mkBacker('s', 17, -8.5, '#7d5233', 1.0, -1), mkBacker('s', 17, 8.5, '#74492c', 1.0, 1)];
+        const backers = [...linebackers, ...safeties];
+        const LOS = 30, LB_ZONE_X = 21, LB_SPEED = 0.105, S_SPEED = 0.116;
+        function updateBackers() {
+            const ps = ball.state, active = D.live && ps !== 'center', passing = active && (ps === 'snap' || ps === 'qb');
+            const prog = Math.min(1, D.t / 35);   // the drop happens over ~0.6 seconds
+            if (passing) for (const b of linebackers) b.thr = null;
+            for (const b of backers) {
+                let tx = b.hx, ty = b.hy, sp = 0.12, chase = false, hold = false, face = 1;
+                if (active) {
+                    const dBall = Math.hypot(b.x - RT.cx, b.y - RT.cy);
+                    if (ps === 'caught' && RT.carrier && Math.hypot(b.x - RT.carrier.x, b.y - RT.carrier.y) < 30) {   // pursue with an angle on the carrier
+                        const p = leadPoint(RT.carrier, b, 0.115); tx = p.x; ty = p.y; sp = 0.115; chase = true;
+                    } else if (ps === 'thrown' && RT.target && dBall < 18) { tx = RT.cx; ty = RT.cy; sp = b.role === 's' ? 0.125 : 0.118; chase = true; }   // break on the ball
+                    else if (ps === 'loose' || ps === 'caught' || D.sacked) { hold = true; }
+                    else if (b.role === 'lb') {
+                        // hook/curl zone: drop to ~9 yards, then sit between the QB and whoever is working through his zone, passing him off once he gets deep
+                        const zx = b.hx + (LB_ZONE_X - b.hx) * prog, zc = b.side * 4.5;
+                        let thr = null, best = 1e9;
+                        for (const w of wideReceivers) {
+                            if (Math.abs(w.y) > 13 || w.x < zx - 4.5) continue;                // way outside, or already past the zone: corners / safeties have him
+                            const other = linebackers.find(o => o !== b);
+                            if (other.thr === w) continue;                                       // the other backer already has him
+                            const d = Math.hypot(w.x - zx, w.y - zc) + (w.y * b.side < -3 ? 5 : 0);
+                            if (d < best) { best = d; thr = w; }
+                        }
+                        b.thr = thr;
+                        if (thr) { tx = Math.min(zx + 0.5, thr.x - 1.0 + thr.vx * 5); tx = Math.max(tx, zx - 3.5); ty = thr.y * 0.85 + player.y * 0.15 + thr.vy * 6; }   // stay on his hip, a step ahead of the break
+                        else { tx = zx; ty = zc * 0.7 + player.y * 0.3; }                                                                                             // empty zone: shade toward the QB's side
+                        ty = Math.max(-11, Math.min(11, ty));
+                        sp = D.t < 22 ? 0.078 : LB_SPEED;
+                    } else {
+                        // deep half: stay over the top of the deepest receiver on his side (or one crossing into it) with a 7-yard cushion
+                        let deep = null;
+                        for (const w of wideReceivers) if (w.y * b.side > -5 && (!deep || w.x < deep.x)) deep = w;
+                        deep = deep || wideReceivers[0];
+                        tx = Math.min(b.hx, deep.x + deep.vx * 6 - 7);
+                        ty = b.side * 8 * 0.45 + deep.y * 0.55 + deep.vy * 6;
+                        ty = Math.max(-14, Math.min(14, ty));
+                        sp = S_SPEED * Math.min(1, 0.55 + D.t / 30);
+                    }
+                }
+                const dx = tx - b.x, dy = ty - b.y, dist = Math.hypot(dx, dy);
+                let step = hold ? 0 : Math.min(sp, dist); if (chase && dist < 1.1) step = 0;   // swarm up to the ball carrier without running through him
+                const mx = dist > 0.001 ? dx / dist * step : 0, my = dist > 0.001 ? dy / dist * step : 0;
+                b.vx += (mx - b.vx) * 0.3; b.vy += (my - b.vy) * 0.3;
+                if (!active && dist < 0.02) { b.x = tx; b.y = ty; b.vx = b.vy = 0; } else { b.x += b.vx; b.y += b.vy; }
+                b.anim += Math.hypot(b.vx, b.vy) * 3;
+                b.reach = chase && ps === 'thrown' && dBallSafe(b) < 3.2;
+                setDefMode(b, chase || !active, 1);   // zone drops face the QB; they turn and run when going deep / to the ball
+            }
+            for (let i = 0; i < backers.length; i++) for (let j = i + 1; j < backers.length; j++) {   // nobody stands on top of another
+                const A = backers[i], B = backers[j], sx = B.x - A.x, sy = B.y - A.y, sd = Math.hypot(sx, sy) || 0.001;
+                if (sd < 1.2) { const p = (1.2 - sd) / 2; A.x -= sx / sd * p; A.y -= sy / sd * p; B.x += sx / sd * p; B.y += sy / sd * p; }
+            }
+        }
         function defenseStart() {
             D.live = true; D.t = 0; D.sacked = false; D.help = rushers[Math.random() < 0.5 ? 1 : 2];
             for (const r of rushers) { r.engaged = 0; r.beaten = false; r.engagedNow = false; r.vx = r.vy = 0; r.beatAt = 220 + Math.random() * 260; r.phase = Math.random() * 6.28; }   // each DL gets free after ~3.5-8s of being blocked
@@ -163,8 +330,9 @@
             if (ps === 'center') {   // between plays: everyone walks back to the line
                 if (!D.live) return;
                 let home = true; const all = [...offensiveLine, ...rushers.map(r => r.dl)];
-                for (const o of all) { o.x += (o.hx - o.x) * 0.1; o.y += (o.hy - o.y) * 0.1; o.vx = o.vy = 0; if (Math.hypot(o.hx - o.x, o.hy - o.y) > 0.04) home = false; }
-                if (home) { for (const o of all) { o.x = o.hx; o.y = o.hy; } for (const o of offensiveLine) o.facing = -1; for (const r of rushers) { r.dl.facing = 1; r.vx = r.vy = 0; r.engagedNow = false; } D.live = false; D.sacked = false; }
+                for (const o of all) { const ox = o.x, oy = o.y; o.x += (o.hx - o.x) * 0.1; o.y += (o.hy - o.y) * 0.1; o.vx = o.x - ox; o.vy = o.y - oy; o.anim = (o.anim || 0) + Math.hypot(o.vx, o.vy) * 3; if (Math.abs(o.vx) > 0.004) o.facing = o.vx > 0 ? 1 : -1; if (Math.hypot(o.hx - o.x, o.hy - o.y) > 0.04) home = false; }
+                for (const r of rushers) { r.vx = r.dl.vx; r.vy = r.dl.vy; r.anim = r.dl.anim; r.engagedNow = false; }
+                if (home) { for (const o of all) { o.x = o.hx; o.y = o.hy; o.vx = o.vy = 0; } for (const o of offensiveLine) o.facing = -1; for (const r of rushers) { r.dl.facing = 1; r.vx = r.vy = 0; r.engagedNow = false; } D.live = false; D.sacked = false; }
                 return;
             }
             if (!D.live) return;
@@ -179,17 +347,16 @@
             }
             // 1) the rushers
             for (const r of rushers) {
-                const dl = r.dl, toQ = unit(player.x - dl.x, player.y - dl.y); r.toQ = toQ;
+                const dl = r.dl, dQ = Math.hypot(player.x - dl.x, player.y - dl.y);
+                const toQ = unit(player.x - dl.x, player.y + r.lane * Math.max(0, Math.min(1, (dQ - 1.8) / 6)) - dl.y); r.toQ = toQ;   // his rush lane: aims a little to one side of the QB, then closes in
                 let eng = Math.hypot(r.blk.x - dl.x, r.blk.y - dl.y) < 1.3 ? 1 : 0;
                 if (r === D.help && Math.hypot(center.x - dl.x, center.y - dl.y) < 1.3) eng++;
                 r.engagedNow = live && eng > 0 && !r.beaten;
                 if (live) {
                     if (r.engagedNow) { r.engaged += eng > 1 ? 0.5 : 1; if (r.engaged > r.beatAt) r.beaten = true; }   // a double team holds twice as long
-                    const lat = Math.sin(D.t * 0.05 + r.phase) * (r.beaten ? 1.5 : 0.9);   // swims left and right looking for a way around
-                    const dir = unit(toQ.x - toQ.y * lat, toQ.y + toQ.x * lat);
-                    const speed = 0.062 * Math.min(1, D.t / 10) * (r.engagedNow ? 0.25 : 1);   // slowed to a crawl while a lineman has him
-                    r.vx += (dir.x * speed - r.vx) * 0.2; r.vy += (dir.y * speed - r.vy) * 0.2;
-                    dl.facing = toQ.x >= 0 ? 1 : -1;
+                    const speed = 0.062 * Math.min(1, D.t / 10) * (r.engagedNow ? 0.12 : 1);   // slowed to a crawl while a lineman has him
+                    r.vx += (toQ.x * speed - r.vx) * 0.2; r.vy += (toQ.y * speed - r.vy) * 0.2;
+                    if (Math.abs(toQ.x) > 0.25) dl.facing = toQ.x > 0 ? 1 : -1;
                 } else { r.vx *= 0.85; r.vy *= 0.85; }
                 dl.x += r.vx; dl.y += r.vy; r.anim += Math.hypot(r.vx, r.vy) * 3;
             }
@@ -198,12 +365,12 @@
                 for (const r of rushers) {
                     const dl = r.dl, bl = r.blk;
                     const g = unit(dl.x + r.toQ.x * 1.05 - bl.x, dl.y + r.toQ.y * 1.05 - bl.y), step = Math.min(r.beaten ? 0.035 : 0.085, g.l);
-                    bl.x += g.x * step; bl.y += g.y * step; bl.facing = dl.x < bl.x ? -1 : 1;
+                    bl.x += g.x * step; bl.y += g.y * step; if (dl.x - bl.x < -0.3) bl.facing = -1; else if (dl.x - bl.x > 0.6) bl.facing = 1;
                 }
                 const hr = D.help, hd = hr.dl, perp = { x: -hr.toQ.y, y: hr.toQ.x };
                 const side = (perp.x * (center.x - hd.x) + perp.y * (center.y - hd.y)) >= 0 ? 1 : -1;   // lines up beside the guard/tackle for a double team
                 const gc = unit(hd.x + hr.toQ.x * 1.0 + perp.x * side * 0.8 - center.x, hd.y + hr.toQ.y * 1.0 + perp.y * side * 0.8 - center.y), stepC = Math.min(hr.beaten ? 0.03 : 0.07, gc.l);
-                center.x += gc.x * stepC; center.y += gc.y * stepC; center.facing = hd.x < center.x ? -1 : 1;
+                center.x += gc.x * stepC; center.y += gc.y * stepC; if (hd.x - center.x < -0.3) center.facing = -1; else if (hd.x - center.x > 0.6) center.facing = 1;
             }
             // 3) nobody can overlap: a beaten blocker gets shoved aside, otherwise the DL is held up
             for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
@@ -249,9 +416,10 @@
             ball.state = 'thrown'; ball.t = 0; ball.ox = player.x; ball.oy = player.y; ball.x = ball.ox; ball.y = ball.oy; ball.z = 2.0;
             ball.dx = th.dx; ball.dy = th.dy; ball.range = th.range; ball.peak = th.peak;
             ball.T = th.T;   // hang time depends on pass type (bullet = fast and flat, lob = slow and high)
+            assignCatch();   // the nearest wide receiver adjusts to where it comes down
         }
         function startSnap() {
-            defenseStart(); ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
+            defenseStart(); routesStart(); ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
         }
         function updateBall() {
             // ease the finger position (kills jitter from touch sampling) and the QB's wind-up
@@ -263,7 +431,13 @@
                 ball.t++; const k = Math.min(1, ball.t / ball.T);
                 ball.x = ball.ox + ball.dx * ball.range * k; ball.y = ball.oy + ball.dy * ball.range * k;
                 ball.z = 2.0 * (1 - k) + 4 * ball.peak * k * (1 - k);
+                if (RT.target && k >= RT.kc && Math.hypot(ball.x - RT.target.x, ball.y - RT.target.y) < CATCH_R) { ball.state = 'caught'; RT.carrier = RT.target; RT.catchT = 0; ball.x = RT.carrier.x; ball.y = RT.carrier.y; ball.z = 1.5; return; }   // caught!
                 if (k >= 1) { ball.state = 'loose'; ball.z = 0; ball.vz = 0.2; ball.vx = ball.dx * 0.16; ball.vy = ball.dy * 0.16; ball.rest = 0; }
+                return;
+            }
+            if (ball.state === 'caught') {   // receiver has it: the ball rides with him, then the play resets
+                ball.x = RT.carrier.x; ball.y = RT.carrier.y; ball.z = 1.5;
+                if (++RT.catchT > 110) ball.state = 'center';
                 return;
             }
             if (ball.state === 'loose') {   // lands, hops a couple of times, rolls out, then the next snap is set up
@@ -782,10 +956,13 @@ const PXS = (function () {
             player.y = Math.max(-FIELD_WIDTH_YARDS / 2, Math.min(FIELD_WIDTH_YARDS / 2, player.y));
             updateBall();
             updateDefense();
+            updateCorners();
+            updateReceivers();
+            updateBackers();
             const th = computeThrow(); if (th && Math.abs(th.dx) > 0.05) player.facing = th.dx > 0 ? 1 : -1;
             // camera follow (same smoothing as the original)
             camera.pitch = FIELD_VIEW_PITCH; camera.skew = 0;
-            const followBall = ball.state === 'thrown' || ball.state === 'loose';   // pass in the air: camera tracks the ball
+            const followBall = ball.state === 'thrown' || ball.state === 'loose' || ball.state === 'caught';   // pass in the air: camera tracks the ball
             camera.x = followBall ? Math.max(0, Math.min(FIELD_LENGTH_YARDS, ball.x)) : player.x;
             camera.y = camYFollow(followBall ? ball.y : player.y);
             const lag = 0.2; camera.currentX += (camera.x - camera.currentX) * lag; camera.currentY += (camera.y - camera.currentY) * lag;
@@ -813,6 +990,8 @@ const PXS = (function () {
             drawPixelShadow(runningBack.x, runningBack.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
             for (const ol of offensiveLine) drawPixelShadow(ol.x, ol.y, PPY * 0.80, PPY * 0.45, PPY, 'rgba(0,0,0,0.20)');   // long, low oval like the crouched body (not a round blob)
             for (const r of rushers) drawPixelShadow(r.dl.x, r.dl.y, PPY * 0.80, PPY * 0.45, PPY, 'rgba(0,0,0,0.20)');
+            for (const c of corners) drawPixelShadow(c.x, c.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
+            for (const b of backers) drawPixelShadow(b.x, b.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
             if (shadowSize > 0) drawPixelShadow(p.x, p.y, shadowSize / X_STRETCH, shadowSize, PPY, 'rgba(0,0,0,0.20)');
             ctx.restore();
 
@@ -831,21 +1010,7 @@ const PXS = (function () {
 
             drawDefense(true);   // linemen further up the screen than the QB are drawn behind him
 
-            // wide receiver (staggered two-point receiver stance)
-            for (const o of receivers) {
-                const os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
-                const wc = PXS.cached({
-                    facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4,
-                    skin: o.skinTone, jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff',
-                    pitch: 0.25, lean: 0, plant: true, bob: 0, breath: 0,
-                    armA1: -0.6, armA2: -0.8, armB1: 0.7, armB2: 0.9, legA1: 0.35, legA2: -0.3, legK1: 0.3, legK2: 0.2
-                });
-                const wspx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
-                ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1);
-                ctx.imageSmoothingEnabled = wspx < 1.6;
-                ctx.drawImage(wc, Math.round(-PXS.HX * wspx), Math.round(3 * oScale - PXS.GROUND * wspx), Math.round(PXS.W * wspx), Math.round(PXS.H * wspx));
-                ctx.restore();
-            }
+            drawReceiversAndCorners();   // sorted back-to-front so they overlap correctly when they run together
 
             // the player sprite (screen space)
             const pScreen = toScreen(p.x, p.y); const pScale = camera.zoom * 0.04;
@@ -956,34 +1121,113 @@ const PXS = (function () {
         }
         // snap, throw and loose ball: pixel ball + a blocky shadow on the turf
         // the DL and the guard blocking him: stance sprites before the snap, running / blocking poses after it
+        // Lineman poses. P(pitch, armA1, armA2, armB1, armB2, legA1, legA2, legK1, legK2) - every pose has the same keys so they can be blended.
+        // (leg angles are measured from the torso, so a leaning lineman needs negative thigh angles to keep his knees under him)
+        const P = (pitch, a1, a2, b1, b2, l1, l2, k1, k2) => ({ pitch, armA1: a1, armA2: a2, armB1: b1, armB2: b2, legA1: l1, legA2: l2, legK1: k1, legK2: k2 });
+        const mixPose = (A, B, t) => { const o = {}; for (const k in A) o[k] = A[k] + (B[k] - A[k]) * t; return o; };
+        const STANCE_POSE = P(0.79, -1.0, -0.9, 0.1, 0.1, 0.55, -0.45, 0.7, 1.4);   // down in the stance, they rise out of it over the first few frames of the snap
+        // exactly the QB's sprint cycle: legs scissor, knees drive up, arms pump (drawn with the QB's run bob, see drawDefense)
+        function sprintPose(anim) {
+            const sw = Math.sin(anim), c = Math.cos(anim), armQ = Math.round((anim - 1.2) / (Math.PI / 3)), aw = Math.sin(armQ * Math.PI / 3) / 0.866;
+            return P(0.13, aw * (Math.PI / 3.4), -aw * (Math.PI / 3.4), 1.3 - 0.45 * aw, 1.3 + 0.45 * aw, -sw * (Math.PI / 2.7), sw * (Math.PI / 2.7), 1.6 * Math.max(0, c), 1.6 * Math.max(0, -c));
+        }
+        // pass-set: athletic stance, knees bent, feet under him, hands up at the chest. Moving = quick shuffle steps (feet alternate, knees lift),
+        // engaged = short choppy steps while the hands punch into the DL.
+        function blockPose(o, engaged, mv, beaten) {
+            const s = Math.sin(o.anim * 1.8), c = Math.cos(o.anim * 1.8), ch = Math.sin(D.t * 0.45 + o.hx * 3), pn = Math.sin(D.t * 0.2 + o.hx * 3);
+            const pitch = beaten ? 0.5 : 0.34;
+            const arms = engaged ? [-1.15 - 0.1 * pn, -1.2 + 0.1 * pn, 0.4 - 0.2 * pn, 0.35 + 0.2 * pn] : beaten ? [-1.45, -1.55, 0.2, 0.2] : [-0.9, -1.0, 0.8, 0.7];
+            const stepAmt = 0.3 * mv, chop = engaged ? 0.07 : 0;
+            return P(pitch, arms[0], arms[1], arms[2], arms[3],
+                -0.59 + stepAmt * s + chop * ch, -0.19 - stepAmt * s - chop * ch,
+                0.4 + 0.5 * mv * Math.max(0, c) + 0.1 * (engaged ? Math.max(0, ch) : 0), 0.4 + 0.5 * mv * Math.max(0, -c) + 0.1 * (engaged ? Math.max(0, -ch) : 0));
+        }
+        // DL: low and driving into the blocker while he is held (hands fighting, short choppy steps)
+        function rushBase(r) {
+            const ch = Math.sin(D.t * 0.4 + r.phase);
+            return P(0.42, -1.2 + 0.1 * ch, -1.1 - 0.1 * ch, 0.3, 0.3, -0.65 + 0.07 * ch, -0.2 - 0.07 * ch, 0.45 + 0.1 * Math.max(0, ch), 0.5 + 0.1 * Math.max(0, -ch));
+        }
+        // standing body height of a pose, same math the sprite uses to plant its feet, so switching to the run bob has no vertical pop (same trick as the QB)
+        function baseHy(p) {
+            const q = v => Math.round(v * 16) / 16, ip = q(p.pitch), ps = Math.sin(ip), pc = Math.cos(ip);
+            const rel = (off, a, k) => { const A = a + ip, B = A + k; return off * ps + 0.2 * pc + Math.cos(A) * 2.7 + Math.cos(B) * 2.5; };
+            return Math.round(PXS.GROUND - (Math.max(rel(-0.5, q(p.legA1), q(p.legK1)), rel(0.5, q(p.legA2), q(p.legK2))) + 0.9));
+        }
         function drawDefense(behind) {
             const oScale = camera.zoom * 0.04, spx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
             const list = (D.live ? offensiveLine.map(o => ({ o })) : []).concat(rushers.map(r => ({ o: r.dl, r })))
                 .filter(e => (e.o.y <= player.y) === behind).sort((a, b) => a.o.y - b.o.y);
+            const rise = Math.min(1, D.t / 10);   // 0 -> 1 over the first 10 frames after the hike
             for (const e of list) {
                 const o = e.o, r = e.r, os = toScreen(o.x, o.y);
                 ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1); ctx.imageSmoothingEnabled = false;
                 if (!D.live) {
                     ctx.drawImage(dlineSprite, Math.round(-18 * spx * 0.5), Math.round(3 * oScale - dlineSprite.height * spx), Math.round(dlineSprite.width * spx), Math.round(dlineSprite.height * spx));
                 } else {
-                    let pose;
+                    let pose, plant = true, bob = 0, lean = 0;
                     if (r) {
-                        const mv = Math.min(1, Math.hypot(r.vx, r.vy) / 0.06), sw = Math.sin(r.anim);
-                        pose = r.engagedNow ? { pitch: 0.35, armA1: -1.5, armA2: -1.4, armB1: 0.3, armB2: 0.3, legA1: 0.5, legA2: -0.4, legK1: 0.6, legK2: 0.5 }
-                                            : { pitch: 0.2, armA1: -0.5 + sw * 0.8, armA2: -0.5 - sw * 0.8, armB1: 0.9, armB2: 0.9, legA1: -sw * 0.8 * mv, legA2: sw * 0.8 * mv, legK1: 0.2 + 0.4 * Math.max(0, sw) * mv, legK2: 0.2 + 0.4 * Math.max(0, -sw) * mv };
+                        const base = rushBase(r), v = Math.hypot(r.vx, r.vy) / 0.05;
+                        const bl = r.engagedNow ? 0 : v >= 0.75 ? 1 : v >= 0.4 ? 0.5 : 0;   // snappy like the QB: full sprint -> one in-between frame -> driving pose
+                        pose = base;
+                        if (bl > 0) {
+                            pose = mixPose(base, sprintPose(r.anim), bl); plant = false; lean = 0.2 * bl;
+                            bob = bl * (Math.round(Math.abs(Math.cos(r.anim)) * 1.5) - 2) + (1 - bl) * (17 - baseHy(base));   // body sinks and rises with each stride
+                        }
                     } else {
-                        const mv = Math.min(1, Math.hypot(o.vx, o.vy) / 0.08), sw = Math.sin(o.anim);
-                        pose = { pitch: 0.3, armA1: -1.4, armA2: -1.5, armB1: 0.5, armB2: 0.5, legA1: 0.4 + sw * 0.25 * mv, legA2: -0.35 - sw * 0.25 * mv, legK1: 0.4, legK2: 0.4 };
+                        const rr = rushers.find(q => q.blk === o) || D.help, mv = Math.min(1, Math.hypot(o.vx, o.vy) / 0.07);
+                        pose = blockPose(o, rr.engagedNow, mv, rr.beaten);
                     }
+                    if (rise < 1) pose = mixPose(STANCE_POSE, pose, rise);
                     const isDL = !!r;
                     const spr = PXS.cached(Object.assign({
-                        facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4, skin: o.skinTone, lean: 0, plant: true, bob: 0, breath: 0,
+                        facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4, skin: o.skinTone, plant: plant, bob: bob, lean: lean, breath: 0, toe: 1.5,
                         jersey: isDL ? '#b91c1c' : '#1e3a8a', pants: isDL ? '#e5e7eb' : '#172554', helmet: isDL ? '#991b1b' : '#1e3a8a', jerseyDetail: isDL ? '#fca5a5' : '#3b82f6',
                         helmetStripe: '#ffffff', pantsStripe: isDL ? '#991b1b' : '#ffffff'
                     }, pose));
                     ctx.imageSmoothingEnabled = spx < 1.6;
                     ctx.drawImage(spr, Math.round(-PXS.HX * spx), Math.round(3 * oScale - PXS.GROUND * spx), Math.round(PXS.W * spx), Math.round(PXS.H * spx));
                 }
+                ctx.restore();
+            }
+        }
+
+        // wide receivers (staggered stance, then the QB's sprint cycle on his route, ball tucked after a catch) and the cornerbacks covering them
+        const WR_STANCE = P(0.25, -0.6, -0.8, 0.7, 0.9, 0.35, -0.3, 0.3, 0.2);
+        function drawReceiversAndCorners() {
+            const oScale = camera.zoom * 0.04, spx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
+            const list = receivers.map(o => ({ o, wr: true })).concat(corners.map(o => ({ o, wr: false })), backers.map(o => ({ o, wr: false }))).sort((a, b) => a.o.y - b.o.y);
+            for (const e of list) {
+                const o = e.o, os = toScreen(o.x, o.y);
+                let pose, plant = true, bob = 0, lean = 0, hasB = false, look;
+                if (e.wr) {
+                    pose = WR_STANCE;
+                    if (o.isWR) {
+                        const v = Math.hypot(o.vx, o.vy) / 0.1, bl = v >= 0.75 ? 1 : v >= 0.4 ? 0.5 : 0;
+                        if (bl > 0) { pose = mixPose(WR_STANCE, sprintPose(o.anim), bl); plant = false; lean = 0.2 * bl; bob = bl * (Math.round(Math.abs(Math.cos(o.anim)) * 1.5) - 2) + (1 - bl) * (17 - baseHy(WR_STANCE)); }
+                        if (o === RT.target && ball.state === 'thrown') pose = Object.assign({}, pose, { armA1: -1.6, armA2: -1.7, armB1: 0.2, armB2: 0.2 });   // hands out for the ball
+                        if (o === RT.carrier) { hasB = true; pose = Object.assign({}, pose, { armA1: -0.2, armA2: -0.2, armB1: 1.4, armB2: 1.4 }); }   // ball tucked
+                    }
+                    look = { jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff' };
+                } else {
+                    const spd = Math.hypot(o.vx, o.vy), mv = Math.min(1, spd / 0.08), sw = Math.sin(o.anim * 1.6), co = Math.cos(o.anim * 1.6), md = o.mode || 'ready';
+                    const READY = P(0.14, -0.5, -0.5, 0.7, 0.7, -0.1, 0.1, 0.3, 0.3);
+                    if (md === 'sprint') { pose = sprintPose(o.anim); plant = false; lean = 0.2; bob = Math.round(Math.abs(Math.cos(o.anim)) * 1.5) - 2; }   // full run cycle: turned and running
+                    else if (md === 'backpedal') {   // choppy, low back-pedal, hands out, eyes on the QB
+                        pose = P(0.2, -0.75 - 0.2 * sw, -0.75 + 0.2 * sw, 0.8, 0.8, -0.4 + 0.42 * sw, -0.4 - 0.42 * sw, 0.5 + 0.6 * Math.max(0, co), 0.5 + 0.6 * Math.max(0, -co));
+                    } else if (md === 'shuffle') {   // lateral slide: wide athletic base, quick alternating feet
+                        pose = mixPose(blockPose(o, false, Math.max(0.7, mv), false), READY, 0.4);
+                    } else {   // zone-ready: weight on the balls of his feet, slight bounce, hands up
+                        pose = mixPose(READY, blockPose(o, false, 0, false), 0.5);
+                    }
+                    if (o.reach) pose = Object.assign({}, pose, { armA1: -1.6, armA2: -1.7, armB1: 0.2, armB2: 0.2 });   // hands up to break up the pass
+                    look = { jersey: '#b91c1c', pants: '#e5e7eb', helmet: '#991b1b', jerseyDetail: '#fca5a5', helmetStripe: '#ffffff', pantsStripe: '#991b1b' };
+                }
+                const spr = PXS.cached(Object.assign({
+                    facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: hasB, ballScale: 0.7, skin: o.skinTone, plant: plant, bob: bob, lean: lean, breath: 0, toe: 1.5
+                }, look, pose));
+                ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1);
+                ctx.imageSmoothingEnabled = spx < 1.6;
+                ctx.drawImage(spr, Math.round(-PXS.HX * spx), Math.round(3 * oScale - PXS.GROUND * spx), Math.round(PXS.W * spx), Math.round(PXS.H * spx));
                 ctx.restore();
             }
         }
