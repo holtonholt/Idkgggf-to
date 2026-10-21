@@ -109,7 +109,7 @@
         }
 
         // ===== The one player you control =====
-        const player = { x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0, aimPoseMix: 0 };
+        const player = { x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0 };
         camera.target = player;
         // Offensive lineman at the 20 (field x=30), facing left, four-point stance
         const olineman = { x: 30, y: 0, facing: -1, girth: 1.3, skinTone: '#8d5524' };
@@ -151,10 +151,36 @@
             makeBallSprite([".o.", "oLo", "oLo", "odo", ".d."]),
             makeBallSprite(["oo...", "oLo..", ".oLo.", "..oLo", "...oo"])
         ];
+        // throw: flies along the same arc the dotted preview shows; farther pull = harder throw (faster, higher)
+        function launchThrow(th) {
+            ball.state = 'thrown'; ball.t = 0; ball.ox = player.x; ball.oy = player.y; ball.x = ball.ox; ball.y = ball.oy; ball.z = 2.0;
+            ball.dx = th.dx; ball.dy = th.dy; ball.range = th.range; ball.peak = 2.2 + th.range * 0.2;
+            ball.T = Math.round(34 + th.range * 1.5);   // hang time: ~0.6s short, ~1.8s bomb
+        }
         function startSnap() {
             ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
         }
         function updateBall() {
+            // ease the finger position (kills jitter from touch sampling) and the QB's wind-up
+            aim.fx += (aim.cx - aim.fx) * 0.35; aim.fy += (aim.cy - aim.fy) * 0.35;
+            const aiming = computeThrow() !== null;
+            aim.mix = Math.max(0, Math.min(1, aim.mix + (aiming ? 0.14 : -0.14)));
+            if (aiming && Math.abs(aim.sx - aim.fx) > 6) player.facing = (aim.sx - aim.fx) > 0 ? 1 : -1;   // turn to face the throw
+            if (ball.state === 'thrown') {
+                ball.t++; const k = Math.min(1, ball.t / ball.T);
+                ball.x = ball.ox + ball.dx * ball.range * k; ball.y = ball.oy + ball.dy * ball.range * k;
+                ball.z = 2.0 * (1 - k) + 4 * ball.peak * k * (1 - k);
+                if (k >= 1) { ball.state = 'loose'; ball.z = 0; ball.vz = 0.2; ball.vx = ball.dx * 0.16; ball.vy = ball.dy * 0.16; ball.rest = 0; }
+                return;
+            }
+            if (ball.state === 'loose') {   // lands, hops a couple of times, rolls out, then the next snap is set up
+                ball.t++; ball.rest++;
+                ball.x += ball.vx; ball.y += ball.vy; ball.vx *= 0.94; ball.vy *= 0.94;
+                ball.z += ball.vz; ball.vz -= 0.03;
+                if (ball.z <= 0) { ball.z = 0; ball.vz = -ball.vz * 0.4; if (ball.vz < 0.05) ball.vz = 0; }
+                if (ball.rest > 120) ball.state = 'center';
+                return;
+            }
             if (ball.state !== 'snap') return;
             ball.t++;
             const k = Math.min(1, ball.t / SNAP_FRAMES);
@@ -165,20 +191,11 @@
         }
 
         // Drag-back aiming (touch or mouse on the field): pull back = throw the opposite way, farther pull = farther throw
-        const aim = { active: false, id: null, sx: 0, sy: 0, cx: 0, cy: 0, tx: 0, ty: 0 };
+        const aim = { active: false, id: null, sx: 0, sy: 0, cx: 0, cy: 0, fx: 0, fy: 0, mix: 0 };   // fx/fy = smoothed finger position, mix = 0..1 wind-up
         const MIN_PULL = 14, MAX_PULL = 120, MIN_THROW_YARDS = 6, MAX_THROW_YARDS = 50;
-        function aimBegin(id, x, y) { if (aim.active) return; aim.active = true; aim.id = id; aim.sx = aim.cx = aim.tx = x; aim.sy = aim.cy = aim.ty = y; }
-        function aimMove(x, y) { aim.tx = x; aim.ty = y; }
-        function aimEnd() { aim.active = false; aim.id = null; }
-        // Ease the live aim point toward touch/mouse input so event-rate differences do not make the arc jump.
-        function updateAimSmoothing() {
-            if (!aim.active) return;
-            const ease = 0.42;
-            aim.cx += (aim.tx - aim.cx) * ease;
-            aim.cy += (aim.ty - aim.cy) * ease;
-            if (Math.abs(aim.tx - aim.cx) < 0.12) aim.cx = aim.tx;
-            if (Math.abs(aim.ty - aim.cy) < 0.12) aim.cy = aim.ty;
-        }
+        function aimBegin(id, x, y) { if (aim.active) return; aim.active = true; aim.id = id; aim.sx = aim.cx = aim.fx = x; aim.sy = aim.cy = aim.fy = y; }
+        function aimMove(x, y) { aim.cx = x; aim.cy = y; }
+        function aimEnd() { const th = computeThrow(); if (th) launchThrow(th); aim.active = false; aim.id = null; }
         canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; aimBegin(t.identifier, t.clientX, t.clientY); }, { passive: false });
         canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!aim.active) return; for (const t of e.changedTouches) if (t.identifier === aim.id) aimMove(t.clientX, t.clientY); }, { passive: false });
         const aimTouchEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === aim.id) aimEnd(); };
@@ -188,7 +205,7 @@
         window.addEventListener('mouseup', () => { if (aim.id === 'mouse') aimEnd(); });
         function computeThrow() {
             if (!aim.active || ball.state !== 'qb') return null;
-            const dx = aim.sx - aim.cx, dy = aim.sy - aim.cy, len = Math.hypot(dx, dy);
+            const dx = aim.sx - aim.fx, dy = aim.sy - aim.fy, len = Math.hypot(dx, dy);
             if (len < MIN_PULL) return null;
             const power = Math.min(1, (len - MIN_PULL) / (MAX_PULL - MIN_PULL));
             const d = screenInputToWorldDir(dx, dy);
@@ -472,7 +489,29 @@ const PXS = (function () {
             capsule(ax - fx * .2, ay + .3 - fy * .2, ax + fx * toe, ay + .4 + fy * toe, 0.8, CLEAT.b);
             flush(dim); return { ax, ay };
         }
-        arm(o.armA1, o.armB1, 0.72);
+        // Ball pose for the QB: 0 = held in two hands at the chest, 1 = cocked back by the ear, ready to throw. Arms are solved (2-bone IK) so the hands stay on the ball.
+        const bpose = (o.hasBall && o.ballPose != null) ? Math.max(0, Math.min(1, o.ballPose)) : null;
+        let R1 = { a: o.armA1, b: o.armB1 }, R2 = { a: o.armA2, b: o.armB2 }, BP = null;
+        if (bpose != null) {
+            const lp = (a, b) => a + (b - a) * bpose;
+            const ang = th + lp(-0.6, -1.25);
+            const bcl = [lp(3.4, -3.2), lp(-2.8, -8.0)];                 // ball centre (torso space)
+            const fhl = [lp(3.0, -3.4), lp(-4.1, -6.3)];                 // hand that wraps the ball (front arm)
+            const bhl = [lp(2.9, 5.0), lp(-2.5, -5.0)];                  // other hand: under the ball, then out toward the target
+            const [sx, sy] = U(0.3, -4.1);
+            const ik = (t) => {
+                const L1 = 2.5, L2 = 2.3; const dx = t[0] - sx, dy = t[1] - sy;
+                const d = Math.max(0.9, Math.min(L1 + L2 - 0.05, Math.hypot(dx, dy))), psi = Math.atan2(-dx, dy);
+                const al = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))));
+                const ep = Math.asin(Math.max(-1, Math.min(1, L1 * Math.sin(al) / L2)));
+                let best = null;
+                for (const sg of [1, -1]) { const A = psi + sg * al, B = psi - sg * ep; const ey = sy + Math.cos(A) * L1; if (!best || ey > best.ey) best = { A, B, ey }; }
+                return { a: best.A - th, b: best.A - best.B };
+            };
+            R2 = ik(U(fhl[0], fhl[1])); R1 = ik(U(bhl[0], bhl[1]));
+            const bc = U(bcl[0], bcl[1]); BP = { x: bc[0], y: bc[1], ang };
+        }
+        arm(R1.a, R1.b, 0.72);
         leg(-0.5, o.legA1, o.legK1, 0.76);
         // torso
         shape(hx, uy, th, (lx, ly) => {
@@ -491,47 +530,39 @@ const PXS = (function () {
         shape(hx, uy, th, (lx, ly) => { const col = Math.floor(lx + 3), row = Math.floor(ly + 11); if (row < 0 || row > 5 || col < 0 || col > 6) return 0; const ch = map[row][col]; return ch === '.' ? 0 : (pal[ch] || 0); });
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
-        const tuck = !!o.hasBall && o.armA2 > -0.5;   // ball tucked under the front arm, held against the ribs (dives still reach out with it)
-        // Compact, tapered pixel football with a visible center seam and short laces.
-        // It is drawn before the throwing hand so the hand/forearm naturally overlaps it.
+        const tuck = !!o.hasBall && bpose == null && o.armA2 > -0.5;   // ball tucked under the front arm, held against the ribs (dives still reach out with it)
+        // football: pixel ellipse, tilted along (dirx,diry), laces on top, darker belly underneath
         const drawBall = (bx, by, ang, bs) => {
-            const ca = Math.cos(ang), sa = Math.sin(ang), A = 3.45 * bs, B = 2.0 * bs;
+            const ca = Math.cos(ang), sa = Math.sin(ang), A = 2.7 * bs, B = 1.7 * bs;
             for (let y = Math.floor(by - A - 1); y <= Math.ceil(by + A + 1); y++) for (let x = Math.floor(bx - A - 1); x <= Math.ceil(bx + A + 1); x++) {
-                const dx = x + .5 - bx, dy = y + .5 - by;
-                const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
-                const along = Math.max(0, 1 - Math.abs(u) / A);
-                const halfWidth = B * Math.pow(along, 0.62); // pointed football ends, not a round oval
-                if (Math.abs(v) > halfWidth) continue;
-                let c = v > halfWidth * 0.18 ? pack(120, 53, 15) : pack(180, 83, 9);
-                if (Math.abs(u) > A * 0.78) c = pack(120, 53, 15);
-                // Short white lace bar plus a center seam; these stay legible at small sprite sizes.
-                if (Math.abs(u) < A * 0.31 && Math.abs(v) < 0.28 * bs) c = pack(250, 250, 250);
-                if (Math.abs(u) < 0.58 * bs && Math.abs(v) < halfWidth * 0.78) c = pack(250, 250, 250);
+                const dx = x + .5 - bx, dy = y + .5 - by; const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+                if ((u * u) / (A * A) + (v * v) / (B * B) > 1) continue;
+                let c = v > B * .35 ? pack(120, 53, 15) : pack(180, 83, 9);
+                if (Math.abs(u) < .8 * bs && v < -.1) c = pack(250, 250, 250);
                 put(x, y, c);
             }
             flush(0);
         };
         let fa;
-        if (tuck) {
-            // Geometry first: tuck the ball against the ribs, then draw the forearm over it.
+        if (BP) {
+            drawBall(BP.x, BP.y, BP.ang, Math.max(0.7, Math.min(1.5, o.ballScale || 1)) * 0.8);
+            fa = arm(R2.a, R2.b, 0);   // hand wraps over the ball
+        } else if (tuck) {
+            // geometry of the front arm, computed first so the ball can sit in the crook of it
             const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th, B0 = A0 - o.armB2;
             const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
             const hx0 = ex0 - Math.sin(B0) * 2.3, hy0 = ey0 + Math.cos(B0) * 2.3;
             const bs = Math.max(0.7, Math.min(1.5, o.ballScale || 1)) * 0.8;
-            drawBall((ex0 + hx0) / 2 + 0.8, (ey0 + hy0) / 2 + 1.15, 0.18, bs);
-            fa = arm(o.armA2, o.armB2, 0);
-        } else if (o.hasBall) {
-            // In the throwing pose, place the ball just beyond the hand and render the hand over its edge.
-            const [sx0, sy0] = U(0.3, -4.1); const A0 = o.armA2 + th, B0 = A0 - o.armB2;
-            const ex0 = sx0 - Math.sin(A0) * 2.5, ey0 = sy0 + Math.cos(A0) * 2.5;
-            const hx0 = ex0 - Math.sin(B0) * 2.3, hy0 = ey0 + Math.cos(B0) * 2.3;
-            const dirx = -Math.sin(B0), diry = Math.cos(B0);
-            const bx = hx0 + dirx * 0.42 + 0.18, by = hy0 + diry * 0.38 - 0.18;
-            const ang = Math.atan2(diry, dirx) * 0.34 + (o.pitch ? -0.10 : 0.15);
-            drawBall(bx, by, ang, Math.max(0.9, Math.min(1.5, o.ballScale || 1)));
-            fa = arm(o.armA2, o.armB2, 0);
+            // ball rests just under the forearm, nose pointing forward past the hand, tail tucked back at the elbow/ribs
+            drawBall((ex0 + hx0) / 2 + 1.0, (ey0 + hy0) / 2 + 1.4, 0.18, bs);
+            fa = arm(o.armA2, o.armB2, 0);   // forearm + hand wrap over the top of the ball
         } else {
             fa = arm(o.armA2, o.armB2, 0);
+        }
+        if (o.hasBall && !tuck && !BP) {
+            const dirx = -Math.sin(fa.B), diry = Math.cos(fa.B); const bx = fa.hx + dirx * 0.9 + 0.3, by = fa.hy + diry * 0.9 - 0.7;
+            const ang = Math.atan2(diry, dirx) * 0.5 + (o.pitch ? -0.1 : 0.15);
+            drawBall(bx, by, ang, Math.max(0.7, Math.min(1.5, o.ballScale || 1)));
         }
         cx.putImageData(img, 0, 0);
         return cv;
@@ -598,10 +629,6 @@ const PXS = (function () {
             return { ix, iy };
         }
         function update() {
-            updateAimSmoothing();
-            const aimPoseTarget = aim.active && ball.state === 'qb' && !player.isDiving ? 1 : 0;
-            player.aimPoseMix += (aimPoseTarget - player.aimPoseMix) * 0.30;
-            if (Math.abs(aimPoseTarget - player.aimPoseMix) < 0.006) player.aimPoseMix = aimPoseTarget;
             const { ix, iy } = readInput();
             const spaceDown = !!keys['Space'];
             if (spaceDown && !spaceWasDown && ball.state === 'center') {
@@ -738,22 +765,15 @@ const PXS = (function () {
                     leanA = 0.2 * bl; bobPx = L(17 - idleHy, runBob);
                 }
             }
-            if (!p.isDiving && p.aimPoseMix > 0.001 && ball.state === 'qb') {
-                const am = p.aimPoseMix;
-                const mix = (a, b) => a + (b - a) * am;
-                // Back arm stays balanced; front arm raises the football beside the helmet.
-                pitchQ = mix(pitchQ, 0.16);
-                armAngle1 = mix(armAngle1, -0.62);
-                armAngle2 = mix(armAngle2, -2.18);
-                aB1 = mix(aB1, 0.92); aB2 = mix(aB2, 0.78);
-                legAngle1 = mix(legAngle1, 0.24); legAngle2 = mix(legAngle2, -0.24);
-                kn1 = mix(kn1, 0.34); kn2 = mix(kn2, 0.36);
-                leanA = mix(leanA, -0.06);
-                bobPx = mix(bobPx, 0);
-                plantPose = true;
+            const hasB = ball.state === 'qb';
+            if (hasB && aim.mix > 0 && !p.isDiving) {
+                // throwing stance: shoulders back a touch, wide base, back knee bent
+                const am = aim.mix, L = (a, b) => a + (b - a) * am * (plantPose ? 1 : 0.3);
+                pitchQ = L(pitchQ, -0.04); legAngle1 = L(legAngle1, 0.55); legAngle2 = L(legAngle2, -0.5); kn1 = L(kn1, 0.35); kn2 = L(kn2, 0.75);
+                leanA = L(leanA, -0.1); breathPx = 0;
             }
             const spriteCanvas = PXS.cached({
-                facing: p.facing, girth: p.girth, isRef: false, hasFlag: false, hasBall: ball.state === 'qb', ballScale: 0.98,
+                facing: p.facing, girth: p.girth, isRef: false, hasFlag: false, hasBall: hasB, ballScale: 0.7, ballPose: hasB ? aim.mix : undefined,
                 skin: p.skinTone, jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff',
                 pitch: pitchQ, lean: leanA, plant: plantPose, bob: bobPx, breath: breathPx, toe: 1.5,
                 armA1: armAngle1, armA2: armAngle2, armB1: aB1, armB2: aB2, legA1: legAngle1, legA2: legAngle2, legK1: kn1, legK2: kn2
@@ -768,65 +788,90 @@ const PXS = (function () {
             drawAimLine(spx);
         }
 
-        // flying snap: pixel ball (tumbling) + a blocky shadow on the turf
+        // spiralling football sprites: long axis along the flight direction (16 angles), laces roll around the ball (12 phases)
+        const flightCache = new Map();
+        const FB_PHASES = 16;
+        // pixel football in the game's own ball colours (same orange-brown as the one in the QB's hands): pointed tips, lit top, darker belly, short white laces that roll with the spin
+        function flightBall(aq, pq) {
+            const key = aq * 100 + pq; let c = flightCache.get(key); if (c) return c;
+            const SZ = 13, C = SZ / 2, ang = aq * Math.PI / 16, ca = Math.cos(ang), sa = Math.sin(ang), ph = pq * Math.PI * 2 / FB_PHASES;
+            c = document.createElement('canvas'); c.width = c.height = SZ; const g = c.getContext('2d');
+            const A = 5.6, B = 3.1, lv = Math.sin(ph) * B * 0.5, front = Math.cos(ph) > 0;
+            for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+                const dx = x + .5 - C, dy = y + .5 - C, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+                const t = Math.abs(u) / A; if (t >= 1) continue;
+                const hw = B * Math.pow(1 - t * t, 0.65);                        // lens shape: round in the middle, pointed at the ends
+                if (Math.abs(v) > hw) continue;
+                let col = '#b45309';
+                if (dy > B * 0.25) col = '#8f3f08';                              // belly
+                if (dy > B * 0.7 || Math.abs(v) > hw - 0.6 && dy > 0) col = '#78350f';
+                if (dy < -B * 0.35 && Math.abs(v) < hw - 0.7) col = '#d4720f';   // top highlight
+                if (front && Math.abs(u) < 1.8 && Math.abs(v - lv) < 0.55) col = '#fafafa';   // short laces
+                g.fillStyle = col; g.fillRect(x, y, 1, 1);
+            }
+            flightCache.set(key, c); return c;
+        }
+        // snap, throw and loose ball: pixel ball + a blocky shadow on the turf
         function drawSnapBall(spx) {
-            if (ball.state !== 'snap') return;
+            if (ball.state !== 'snap' && ball.state !== 'thrown' && ball.state !== 'loose') return;
             const s = Math.max(2, Math.round(spx * 0.85)), lift = camera.zoom * 0.9;
-            const g = toScreen(ball.x, ball.y);
+            const g = toScreen(ball.x, ball.y), sh = Math.max(0.5, 1 - ball.z * 0.12);
             ctx.imageSmoothingEnabled = false;
             ctx.fillStyle = 'rgba(0,0,0,0.22)';
-            ctx.fillRect(Math.round(g.x - 2 * s), Math.round(g.y - s * 0.5), 4 * s, s);
-            const spr = BALL_FRAMES[Math.floor(ball.t / 3) % BALL_FRAMES.length];
-            const w = spr.width * s, h = spr.height * s;
-            ctx.drawImage(spr, Math.round(g.x - w / 2), Math.round(g.y - ball.z * lift - h / 2), w, h);
+            ctx.fillRect(Math.round(g.x - 2 * s * sh), Math.round(g.y - s * 0.5), Math.round(4 * s * sh), s);
+            const sx = Math.round(g.x), sy = Math.round(g.y - ball.z * lift);
+            if (ball.state === 'thrown') {
+                // point the nose along the actual on-screen path, spin the laces
+                const k = Math.min(1, ball.t / ball.T), k2 = Math.min(1, k + 0.03), k1 = Math.max(0, k2 - 0.03);
+                const at = kk => { const q = toScreen(ball.ox + ball.dx * ball.range * kk, ball.oy + ball.dy * ball.range * kk); return [q.x, q.y - (2.0 * (1 - kk) + 4 * ball.peak * kk * (1 - kk)) * lift]; };
+                const p0 = at(k1), p1 = at(k2); let ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+                if (Math.cos(ang) < 0) ang += Math.PI;
+                ang += Math.sin(ball.t * 0.45) * 0.07;                         // slight wobble so it reads as a spiral                          // keep the shaded belly on the bottom
+                let aq = Math.round(ang / (Math.PI / 16)); aq = ((aq % 16) + 16) % 16;
+                const spr = flightBall(aq, Math.floor(ball.t * 0.75) % FB_PHASES), w = spr.width * s * 0.65;
+                ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - w / 2), Math.round(w), Math.round(w));
+                return;
+            }
+            if (ball.state === 'loose') {
+                const spr = flightBall(0, 0), w = spr.width * s * 0.65; ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - w / 2), Math.round(w), Math.round(w));
+                return;
+            }
+            const spr = flightBall(Math.floor(ball.t * 0.9) % 16, 0);
+            const w = spr.width * s * 0.65, h = w;
+            ctx.drawImage(spr, Math.round(g.x - w / 2), Math.round(sy - h / 2), w, h);
         }
 
-        // Smooth trajectory preview: an evenly sampled arc with a fine dotted chalk stroke.
-        // Unlike large grid-snapped blocks, the small round dashes do not jump between screen cells.
+        // trajectory preview: pixel dots spaced evenly by distance along the arc (so they don't crawl or jump when you drag), landing mark at the end
         function drawAimLine(spx) {
-            const th = computeThrow();
-            if (!th) return;
-            const lift = camera.zoom * 0.9;
-            const peak = 1.5 + th.range * 0.12, z0 = 2.0, N = 120;
-            const pts = [];
+            const th = computeThrow(); if (!th) return;
+            const g = Math.max(3, Math.round(spx * 1.0)), lift = camera.zoom * 0.9;
+            const peak = 2.2 + th.range * 0.2, z0 = 2.0, N = 120;
+            const sc0 = toScreen(player.x, player.y), xoff = -2.5 * spx * player.facing * aim.mix;   // arc starts at the cocked ball
+            const pts = []; let total = 0;
             for (let i = 0; i <= N; i++) {
                 const k = i / N;
-                const worldX = player.x + th.dx * th.range * k;
-                const worldY = player.y + th.dy * th.range * k;
-                const ground = toScreen(worldX, worldY);
+                const sc = toScreen(player.x + th.dx * th.range * k, player.y + th.dy * th.range * k);
                 const z = z0 * (1 - k) + 4 * peak * k * (1 - k);
-                pts.push({ x: ground.x, y: ground.y - z * lift, gx: ground.x, gy: ground.y });
+                const pt = { x: sc.x + xoff * (1 - k), y: sc.y - z * lift, gx: sc.x, gy: sc.y, s: 0 };
+                if (i > 0) { total += Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y); } pt.s = total; pts.push(pt);
             }
-
-            ctx.save();
-            ctx.imageSmoothingEnabled = true;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-            // Deep outline preserves contrast against bright and dark grass; the white dashes remain delicate.
-            ctx.setLineDash([Math.max(2.2, spx * 0.52), Math.max(4.8, spx * 1.28)]);
-            ctx.strokeStyle = 'rgba(6, 35, 19, 0.82)';
-            ctx.lineWidth = Math.max(3.1, spx * 0.82);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(255, 255, 244, 0.98)';
-            ctx.lineWidth = Math.max(1.6, spx * 0.42);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Small outlined yellow landing cross, centered exactly on the projected landing point.
-            const L = pts[pts.length - 1], arm = Math.max(5.5, Math.min(9, spx * 1.85));
-            ctx.lineCap = 'square';
-            ctx.beginPath();
-            ctx.moveTo(L.gx - arm, L.gy); ctx.lineTo(L.gx + arm, L.gy);
-            ctx.moveTo(L.gx, L.gy - arm); ctx.lineTo(L.gx, L.gy + arm);
-            ctx.strokeStyle = 'rgba(5, 35, 18, 0.90)'; ctx.lineWidth = 4.4; ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(L.gx - arm, L.gy); ctx.lineTo(L.gx + arm, L.gy);
-            ctx.moveTo(L.gx, L.gy - arm); ctx.lineTo(L.gx, L.gy + arm);
-            ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2.0; ctx.stroke();
-            ctx.restore();
+            ctx.imageSmoothingEnabled = false;
+            const OUTLINE = '#0b2a16', FILL = '#ffffff', R = Math.round;
+            const gap = g * 5.5, fade = Math.min(1, aim.mix * 1.5);
+            ctx.globalAlpha = fade;
+            let j = 0;
+            for (let sd = gap; sd < total - g * 3; sd += gap) {          // stop short of the landing mark
+                while (j < N - 1 && pts[j + 1].s < sd) j++;
+                const a0 = pts[j], a1 = pts[j + 1], u = (sd - a0.s) / ((a1.s - a0.s) || 1);
+                const x = R(a0.x + (a1.x - a0.x) * u), y = R(a0.y + (a1.y - a0.y) * u);
+                ctx.fillStyle = OUTLINE; ctx.fillRect(x - g - g, y - g - g, g * 4, g * 4);
+                ctx.fillStyle = FILL; ctx.fillRect(x - g, y - g, g * 2, g * 2);
+            }
+            // landing mark: pixel plus with an outline
+            const L = pts[N], lx = R(L.gx), ly = R(L.gy);
+            const plus = (col, pad) => { ctx.fillStyle = col; for (const [a, b, w, h] of [[-3, -1, 6, 2], [-1, -3, 2, 6]]) ctx.fillRect(lx + a * g - pad, ly + b * g - pad, w * g + pad * 2, h * g + pad * 2); };
+            plus(OUTLINE, g); plus('#fde047', 0);
+            ctx.globalAlpha = 1;
         }
 
         function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; ctx.imageSmoothingEnabled = false; camera.baseZoom = camUnit(); camera.zoom = camera.baseZoom; }
