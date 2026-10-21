@@ -801,9 +801,9 @@ const PXS = (function () {
         // college football sprite: brown leather, pointed tips, white stripes near both ends, small cream laces that roll with the spin
         function flightBall(aq, pq) {
             const key = aq * 100 + pq; let c = flightCache.get(key); if (c) return c;
-            const SZ = 13, C = SZ / 2, ang = aq * Math.PI / 16, ca = Math.cos(ang), sa = Math.sin(ang), ph = pq * Math.PI * 2 / FB_PHASES;
+            const SZ = 7, C = SZ / 2, ang = aq * Math.PI / 16, ca = Math.cos(ang), sa = Math.sin(ang), ph = pq * Math.PI * 2 / FB_PHASES;
             c = document.createElement('canvas'); c.width = c.height = SZ; const g = c.getContext('2d');
-            const A = 5.8, B = 2.9, lv = Math.sin(ph) * B * 0.5, front = Math.cos(ph) > 0;
+            const A = 3.5, B = 1.8, lv = Math.sin(ph) * B * 0.5, front = Math.cos(ph) > 0;
             for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
                 const dx = x + .5 - C, dy = y + .5 - C, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
                 const t = Math.abs(u) / A; if (t >= 1) continue;
@@ -813,9 +813,9 @@ const PXS = (function () {
                 let col = '#b45309';
                 if (belly) col = '#8f3f08';
                 if (dy > B * 0.75) col = '#78350f';                              // underside shadow
-                if (dy < -B * 0.35 && Math.abs(v) < hw - 0.7) col = '#d4720f';   // top highlight
-                if (Math.abs(u) > 2.9 && Math.abs(u) < 4.2) col = belly ? '#cdc8be' : '#f4f0e6';   // white college stripes
-                else if (front && Math.abs(u) < 1.7 && Math.abs(v - lv) < 0.45 && Math.floor(u * 1.6 + 100) % 2 === 0) col = '#ded4be';   // thin laces
+                if (dy < -B * 0.35 && Math.abs(v) < hw - 0.5) col = '#d4720f';   // top highlight
+                if (Math.abs(u) > 1.5 && Math.abs(u) < 2.5) col = belly ? '#cdc8be' : '#f4f0e6';   // white college stripes
+                else if (front && Math.abs(u) < 0.9 && Math.abs(v - lv) < 0.5) col = '#ded4be';   // thin laces
                 g.fillStyle = col; g.fillRect(x, y, 1, 1);
             }
             flightCache.set(key, c); return c;
@@ -823,7 +823,7 @@ const PXS = (function () {
         // snap, throw and loose ball: pixel ball + a blocky shadow on the turf
         function drawSnapBall(spx) {
             if (ball.state !== 'snap' && ball.state !== 'thrown' && ball.state !== 'loose') return;
-            const s = Math.max(2, Math.round(spx * 0.85)), lift = camera.zoom * 0.9;
+            const s = Math.max(2, Math.round(spx * 0.85)), m = Math.max(1, Math.round(spx)), lift = camera.zoom * 0.9;   // m = whole-number ball pixel size, so every ball pixel is identical
             const g = toScreen(ball.x, ball.y), sh = Math.max(0.5, 1 - ball.z * 0.12);
             ctx.imageSmoothingEnabled = false;
             ctx.fillStyle = 'rgba(0,0,0,0.22)';
@@ -837,23 +837,23 @@ const PXS = (function () {
                 if (Math.cos(ang) < 0) ang += Math.PI;
                 ang += Math.sin(ball.t * 0.45) * 0.07;                         // slight wobble so it reads as a spiral                          // keep the shaded belly on the bottom
                 let aq = Math.round(ang / (Math.PI / 16)); aq = ((aq % 16) + 16) % 16;
-                const spr = flightBall(aq, Math.floor(ball.t * 0.75) % FB_PHASES), w = spr.width * s * 0.65;
+                const spr = flightBall(aq, Math.floor(ball.t * 0.75) % FB_PHASES), w = spr.width * m;
                 ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - w / 2), Math.round(w), Math.round(w));
                 return;
             }
             if (ball.state === 'loose') {
-                const spr = flightBall(0, 0), w = spr.width * s * 0.65; ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - w / 2), Math.round(w), Math.round(w));
+                const spr = flightBall(0, 0), w = spr.width * m; ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - w / 2), Math.round(w), Math.round(w));
                 return;
             }
             const spr = flightBall(Math.floor(ball.t * 0.9) % 16, 0);
-            const w = spr.width * s * 0.65, h = w;
+            const w = spr.width * m, h = w;
             ctx.drawImage(spr, Math.round(g.x - w / 2), Math.round(sy - h / 2), w, h);
         }
 
         // trajectory preview: pixel dots spaced evenly by distance along the arc (so they don't crawl or jump when you drag), landing mark at the end
         function drawAimLine(spx) {
             const th = computeThrow(); if (!th) return;
-            const g0 = Math.max(3, Math.round(spx * 1.0)), g = Math.max(1, Math.round(g0 * 0.45)), lift = camera.zoom * 0.9;   // g = thin dot size, g0 = old size (keeps the spacing)
+            const g0 = Math.max(3, Math.round(spx * 1.0)), g = Math.max(2, Math.round(g0 * 0.6)), lift = camera.zoom * 0.9;   // g = thin dot size, g0 = old size (keeps the spacing)
             const peak = 2.2 + th.range * 0.2, z0 = 2.0, N = 120;
             const sc0 = toScreen(player.x, player.y), xoff = -2.5 * spx * player.facing * aim.mix;   // arc starts at the cocked ball
             const pts = []; let total = 0;
