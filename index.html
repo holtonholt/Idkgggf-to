@@ -531,14 +531,19 @@ const PXS = (function () {
         flush(0);
         leg(0.5, o.legA2, o.legK2, 0);
         const tuck = !!o.hasBall && bpose == null && o.armA2 > -0.5;   // ball tucked under the front arm, held against the ribs (dives still reach out with it)
-        // football: pixel ellipse, tilted along (dirx,diry), laces on top, darker belly underneath
+        // college football: pointed brown leather ball, two white stripes near the tips, small cream laces on top, darker belly
         const drawBall = (bx, by, ang, bs) => {
-            const ca = Math.cos(ang), sa = Math.sin(ang), A = 2.7 * bs, B = 1.7 * bs;
+            const ca = Math.cos(ang), sa = Math.sin(ang), A = 3.0 * bs, B = 1.65 * bs;
+            const stripeW = Math.max(0.8, A * 0.16), stripeStart = A * 0.5;
             for (let y = Math.floor(by - A - 1); y <= Math.ceil(by + A + 1); y++) for (let x = Math.floor(bx - A - 1); x <= Math.ceil(bx + A + 1); x++) {
                 const dx = x + .5 - bx, dy = y + .5 - by; const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
-                if ((u * u) / (A * A) + (v * v) / (B * B) > 1) continue;
-                let c = v > B * .35 ? pack(120, 53, 15) : pack(180, 83, 9);
-                if (Math.abs(u) < .8 * bs && v < -.1) c = pack(250, 250, 250);
+                const t = Math.abs(u) / A; if (t >= 1) continue;
+                const hw = B * Math.pow(1 - t * t, 0.7);               // lens shape, pointed at both ends
+                if (Math.abs(v) > hw) continue;
+                const belly = v > B * .3, top = v < -B * .4;
+                let c = belly ? pack(143, 63, 8) : top ? pack(212, 114, 15) : pack(180, 83, 9);
+                if (A >= 1.9 && Math.abs(u) > stripeStart && Math.abs(u) < stripeStart + stripeW) c = belly ? pack(205, 200, 190) : pack(244, 240, 230);   // white college stripes
+                else if (A >= 1.9 && Math.abs(u) < A * 0.3 && Math.abs(v + B * 0.45) < 0.4 * Math.max(1, bs) && Math.floor(u * 1.6 + 100) % 2 === 0) c = pack(222, 212, 190);   // thin stitched laces
                 put(x, y, c);
             }
             flush(0);
@@ -670,7 +675,9 @@ const PXS = (function () {
             const th = computeThrow(); if (th && Math.abs(th.dx) > 0.05) player.facing = th.dx > 0 ? 1 : -1;
             // camera follow (same smoothing as the original)
             camera.pitch = FIELD_VIEW_PITCH; camera.skew = 0;
-            camera.x = player.x; camera.y = camYFollow(player.y);
+            const followBall = ball.state === 'thrown' || ball.state === 'loose';   // pass in the air: camera tracks the ball
+            camera.x = followBall ? Math.max(0, Math.min(FIELD_LENGTH_YARDS, ball.x)) : player.x;
+            camera.y = camYFollow(followBall ? ball.y : player.y);
             const lag = 0.2; camera.currentX += (camera.x - camera.currentX) * lag; camera.currentY += (camera.y - camera.currentY) * lag;
         }
 
@@ -791,22 +798,24 @@ const PXS = (function () {
         // spiralling football sprites: long axis along the flight direction (16 angles), laces roll around the ball (12 phases)
         const flightCache = new Map();
         const FB_PHASES = 16;
-        // pixel football in the game's own ball colours (same orange-brown as the one in the QB's hands): pointed tips, lit top, darker belly, short white laces that roll with the spin
+        // college football sprite: brown leather, pointed tips, white stripes near both ends, small cream laces that roll with the spin
         function flightBall(aq, pq) {
             const key = aq * 100 + pq; let c = flightCache.get(key); if (c) return c;
             const SZ = 13, C = SZ / 2, ang = aq * Math.PI / 16, ca = Math.cos(ang), sa = Math.sin(ang), ph = pq * Math.PI * 2 / FB_PHASES;
             c = document.createElement('canvas'); c.width = c.height = SZ; const g = c.getContext('2d');
-            const A = 5.6, B = 3.1, lv = Math.sin(ph) * B * 0.5, front = Math.cos(ph) > 0;
+            const A = 5.8, B = 2.9, lv = Math.sin(ph) * B * 0.5, front = Math.cos(ph) > 0;
             for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
                 const dx = x + .5 - C, dy = y + .5 - C, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
                 const t = Math.abs(u) / A; if (t >= 1) continue;
-                const hw = B * Math.pow(1 - t * t, 0.65);                        // lens shape: round in the middle, pointed at the ends
+                const hw = B * Math.pow(1 - t * t, 0.7);                         // lens shape: pointed at the ends
                 if (Math.abs(v) > hw) continue;
+                const belly = dy > B * 0.3;
                 let col = '#b45309';
-                if (dy > B * 0.25) col = '#8f3f08';                              // belly
-                if (dy > B * 0.7 || Math.abs(v) > hw - 0.6 && dy > 0) col = '#78350f';
+                if (belly) col = '#8f3f08';
+                if (dy > B * 0.75) col = '#78350f';                              // underside shadow
                 if (dy < -B * 0.35 && Math.abs(v) < hw - 0.7) col = '#d4720f';   // top highlight
-                if (front && Math.abs(u) < 1.8 && Math.abs(v - lv) < 0.55) col = '#fafafa';   // short laces
+                if (Math.abs(u) > 2.9 && Math.abs(u) < 4.2) col = belly ? '#cdc8be' : '#f4f0e6';   // white college stripes
+                else if (front && Math.abs(u) < 1.7 && Math.abs(v - lv) < 0.45 && Math.floor(u * 1.6 + 100) % 2 === 0) col = '#ded4be';   // thin laces
                 g.fillStyle = col; g.fillRect(x, y, 1, 1);
             }
             flightCache.set(key, c); return c;
@@ -844,7 +853,7 @@ const PXS = (function () {
         // trajectory preview: pixel dots spaced evenly by distance along the arc (so they don't crawl or jump when you drag), landing mark at the end
         function drawAimLine(spx) {
             const th = computeThrow(); if (!th) return;
-            const g = Math.max(3, Math.round(spx * 1.0)), lift = camera.zoom * 0.9;
+            const g0 = Math.max(3, Math.round(spx * 1.0)), g = Math.max(1, Math.round(g0 * 0.45)), lift = camera.zoom * 0.9;   // g = thin dot size, g0 = old size (keeps the spacing)
             const peak = 2.2 + th.range * 0.2, z0 = 2.0, N = 120;
             const sc0 = toScreen(player.x, player.y), xoff = -2.5 * spx * player.facing * aim.mix;   // arc starts at the cocked ball
             const pts = []; let total = 0;
@@ -857,20 +866,21 @@ const PXS = (function () {
             }
             ctx.imageSmoothingEnabled = false;
             const OUTLINE = '#0b2a16', FILL = '#ffffff', R = Math.round;
-            const gap = g * 5.5, fade = Math.min(1, aim.mix * 1.5);
+            const gap = g0 * 4.2, fade = Math.min(1, aim.mix * 1.5);
             ctx.globalAlpha = fade;
             let j = 0;
-            for (let sd = gap; sd < total - g * 3; sd += gap) {          // stop short of the landing mark
+            for (let sd = gap; sd < total - g0 * 3; sd += gap) {          // stop short of the landing mark
                 while (j < N - 1 && pts[j + 1].s < sd) j++;
                 const a0 = pts[j], a1 = pts[j + 1], u = (sd - a0.s) / ((a1.s - a0.s) || 1);
                 const x = R(a0.x + (a1.x - a0.x) * u), y = R(a0.y + (a1.y - a0.y) * u);
-                ctx.fillStyle = OUTLINE; ctx.fillRect(x - g - g, y - g - g, g * 4, g * 4);
+                ctx.fillStyle = OUTLINE; ctx.fillRect(x - g - 1, y - g - 1, g * 2 + 2, g * 2 + 2);
                 ctx.fillStyle = FILL; ctx.fillRect(x - g, y - g, g * 2, g * 2);
             }
             // landing mark: pixel plus with an outline
             const L = pts[N], lx = R(L.gx), ly = R(L.gy);
-            const plus = (col, pad) => { ctx.fillStyle = col; for (const [a, b, w, h] of [[-3, -1, 6, 2], [-1, -3, 2, 6]]) ctx.fillRect(lx + a * g - pad, ly + b * g - pad, w * g + pad * 2, h * g + pad * 2); };
-            plus(OUTLINE, g); plus('#fde047', 0);
+            const gp = Math.max(2, Math.round(g0 * 0.6));   // landing mark: thinner arms too
+            const plus = (col, pad) => { ctx.fillStyle = col; for (const [a, b, w, h] of [[-3, -0.5, 6, 1], [-0.5, -3, 1, 6]]) ctx.fillRect(Math.round(lx + a * gp - pad), Math.round(ly + b * gp - pad), Math.round(w * gp + pad * 2), Math.round(h * gp + pad * 2)); };
+            plus(OUTLINE, 1); plus('#fde047', 0);
             ctx.globalAlpha = 1;
         }
 
