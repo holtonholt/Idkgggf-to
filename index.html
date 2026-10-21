@@ -109,7 +109,7 @@
         }
 
         // ===== The one player you control =====
-        const player = { x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0 };
+        const player = { sacked: 0, x: 34.9, y: 0, speed: 0.095, facing: -1, animTimer: 0, isDiving: false, diveTimer: 0, diveDirX: 0, diveDirY: 0, skinTone: '#d4a373', girth: 1.0, pxSeed: 0.37, vx: 0, vy: 0, runAmt: 0, hasMoved: false, idleMix: 0 };
         camera.target = player;
         // Offensive lineman at the 20 (field x=30), facing left, four-point stance
         const olineman = { x: 30, y: 0, facing: -1, girth: 1.3, skinTone: '#8d5524' };
@@ -117,11 +117,18 @@
         const LINE_SPACING = 1.7, LINE_CURVE = [0, 0.35, 1.0];   // sideways gap between linemen / how far each slot sits behind the center
         const offensiveLine = [-2, -1, 0, 1, 2].map(i => i === 0 ? olineman : { x: olineman.x + LINE_CURVE[Math.abs(i)], y: olineman.y + i * LINE_SPACING, facing: -1, girth: 1.3, skinTone: '#8d5524' });
         // Wide receiver split wide, facing left, staggered receiver stance
-        const receiver = { x: 30, y: -13, facing: -1, girth: 1.0, skinTone: '#b07a4f' };
+        const receivers = [   // two split out to the sidelines, a slot receiver up top, and the tight end by the bottom tackle
+            { x: 30, y: -19, facing: -1, girth: 1.0, skinTone: '#b07a4f' },
+            { x: 30, y: 19, facing: -1, girth: 1.0, skinTone: '#a0693f' },
+            { x: 31, y: -14, facing: -1, girth: 1.0, skinTone: '#8d5524' },    // extra receiver on the top side, in the slot (just off the line)
+            { x: 31.3, y: 5.1, facing: -1, girth: 1.0, skinTone: '#b07a4f' }  // tight end, next to the bottom tackle, same receiver stance
+        ];
+        // Running back lined up beside the QB, facing left, two-point stance (bent forward, hands resting on his knees)
+        const runningBack = { x: 34.9, y: 2.8, facing: -1, girth: 0.9, skinTone: '#9c6b43' };
 
-        const makeLinemanSprite = function (withBall) {
+        const makeLinemanSprite = function (withBall, palOver) {
             let rows = ["............HTTH..", "...........HHTTHH.", "....PPP....HHHHHEM", "...PPPPJJJJHHHhHSM", "..PPPPPJBBJJhHHMMM", "..PPPPpJJBBJJhh...", "...PPPpJJJJJJ.....", "...PPPP.pPPJJ.....", "..PPpPP.PPpSSSSS...", "..GPP...GPPSsSlso..", "..WGG...WGG.oooooo.", "..CCC...CCC..dddd.."];
-            const pal = {o:'#b45309',l:'#fafafa',d:'#78350f',H:'#1e3a8a',T:'#fffefc',M:'#cbd5e1',E:'#0f172a',h:'#162c6b',J:'#1e3a8a',B:'#7fb0ff',S:'#d4a373',s:'#a8794d',P:'#172554',p:'#0f1a3d',G:'#c2c1c0',W:'#fffefc',C:'#343d47'};
+            const pal = Object.assign({o:'#b45309',l:'#fafafa',d:'#78350f',H:'#1e3a8a',T:'#fffefc',M:'#cbd5e1',E:'#0f172a',h:'#162c6b',J:'#1e3a8a',B:'#7fb0ff',S:'#d4a373',s:'#a8794d',P:'#172554',p:'#0f1a3d',G:'#c2c1c0',W:'#fffefc',C:'#343d47'}, palOver || {});
             rows = rows.map(r => r.padEnd(19, '.'));
             if (!withBall) {   // no ball: swap the hand-on-ball rows for an arm that reaches down so the arm drops straight down and the hand is planted flat on the turf
                 rows[8] = "..PPpPP.PPpsSS".padEnd(19, '.'); rows[9] = "..GPP...GPP.sSS".padEnd(19, '.');
@@ -132,6 +139,92 @@
             return c;
         };
         const linemanSprite = makeLinemanSprite(true), linemanSpriteNoBall = makeLinemanSprite(false);   // only the center holds the ball
+
+        // ===== Defense: one defensive lineman lined up over the right guard =====
+        const DEF_PAL = { H: '#991b1b', h: '#7f1d1d', J: '#b91c1c', B: '#fca5a5', P: '#e5e7eb', p: '#9ca3af', S: '#a8764a', s: '#7d5233' };   // red jersey, light pants, darker skin
+        const dlineSprite = makeLinemanSprite(false, DEF_PAL);
+        // 4-man front: a DL over each tackle and guard, set a few yards off the ball. The center helps double-team whoever is closest to the QB.
+        const DL_GAP = 2.6;   // how far in front of the OL the DL line sets up (yards)
+        const DL_SKINS = ['#7d5233', '#6b4423', '#8a5a3a', '#74492c'];
+        for (const o of offensiveLine) { o.hx = o.x; o.hy = o.y; o.vx = 0; o.vy = 0; o.anim = 0; o.px = o.x; o.py = o.y; }
+        const rushers = [0, 1, 3, 4].map((idx, i) => {   // tackle, guard, guard, tackle (the center, idx 2, is the helper)
+            const bl = offensiveLine[idx];
+            return { blk: bl, dl: { x: bl.x - DL_GAP, y: bl.y, hx: bl.x - DL_GAP, hy: bl.y, vx: 0, vy: 0, facing: 1, girth: 1.2, skinTone: DL_SKINS[i] },
+                     vx: 0, vy: 0, anim: 0, engaged: 0, engagedNow: false, beaten: false, beatAt: 240, phase: 0, toQ: { x: 1, y: 0 } };
+        });
+        const bodies = [...offensiveLine.map(o => ({ o, team: 0 })), ...rushers.map(r => ({ o: r.dl, team: 1, r }))];
+        const D = { live: false, t: 0, sacked: false, help: rushers[1] };
+        function defenseStart() {
+            D.live = true; D.t = 0; D.sacked = false; D.help = rushers[Math.random() < 0.5 ? 1 : 2];
+            for (const r of rushers) { r.engaged = 0; r.beaten = false; r.engagedNow = false; r.vx = r.vy = 0; r.beatAt = 220 + Math.random() * 260; r.phase = Math.random() * 6.28; }   // each DL gets free after ~3.5-8s of being blocked
+        }
+        function updateDefense() {
+            const ps = ball.state, unit = (x, y) => { const l = Math.hypot(x, y) || 0.001; return { x: x / l, y: y / l, l }; };
+            if (ps === 'center') {   // between plays: everyone walks back to the line
+                if (!D.live) return;
+                let home = true; const all = [...offensiveLine, ...rushers.map(r => r.dl)];
+                for (const o of all) { o.x += (o.hx - o.x) * 0.1; o.y += (o.hy - o.y) * 0.1; o.vx = o.vy = 0; if (Math.hypot(o.hx - o.x, o.hy - o.y) > 0.04) home = false; }
+                if (home) { for (const o of all) { o.x = o.hx; o.y = o.hy; } for (const o of offensiveLine) o.facing = -1; for (const r of rushers) { r.dl.facing = 1; r.vx = r.vy = 0; r.engagedNow = false; } D.live = false; D.sacked = false; }
+                return;
+            }
+            if (!D.live) return;
+            D.t++;
+            const live = (ps === 'snap' || ps === 'qb') && !D.sacked;   // still rushing while the QB holds the ball
+            for (const o of offensiveLine) { o.px = o.x; o.py = o.y; }
+            const center = olineman;
+            // the center helps whichever rusher is closest to the QB (sticks with his pick unless another gets clearly closer)
+            if (live) {
+                let bd = Math.hypot(player.x - D.help.dl.x, player.y - D.help.dl.y);
+                for (const r of rushers) { const d = Math.hypot(player.x - r.dl.x, player.y - r.dl.y); if (d < bd - 1.5) { D.help = r; bd = d; } }
+            }
+            // 1) the rushers
+            for (const r of rushers) {
+                const dl = r.dl, toQ = unit(player.x - dl.x, player.y - dl.y); r.toQ = toQ;
+                let eng = Math.hypot(r.blk.x - dl.x, r.blk.y - dl.y) < 1.3 ? 1 : 0;
+                if (r === D.help && Math.hypot(center.x - dl.x, center.y - dl.y) < 1.3) eng++;
+                r.engagedNow = live && eng > 0 && !r.beaten;
+                if (live) {
+                    if (r.engagedNow) { r.engaged += eng > 1 ? 0.5 : 1; if (r.engaged > r.beatAt) r.beaten = true; }   // a double team holds twice as long
+                    const lat = Math.sin(D.t * 0.05 + r.phase) * (r.beaten ? 1.5 : 0.9);   // swims left and right looking for a way around
+                    const dir = unit(toQ.x - toQ.y * lat, toQ.y + toQ.x * lat);
+                    const speed = 0.062 * Math.min(1, D.t / 10) * (r.engagedNow ? 0.25 : 1);   // slowed to a crawl while a lineman has him
+                    r.vx += (dir.x * speed - r.vx) * 0.2; r.vy += (dir.y * speed - r.vy) * 0.2;
+                    dl.facing = toQ.x >= 0 ? 1 : -1;
+                } else { r.vx *= 0.85; r.vy *= 0.85; }
+                dl.x += r.vx; dl.y += r.vy; r.anim += Math.hypot(r.vx, r.vy) * 3;
+            }
+            // 2) the offensive line: each lineman slides to stay between his man and the QB
+            if (live) {
+                for (const r of rushers) {
+                    const dl = r.dl, bl = r.blk;
+                    const g = unit(dl.x + r.toQ.x * 1.05 - bl.x, dl.y + r.toQ.y * 1.05 - bl.y), step = Math.min(r.beaten ? 0.035 : 0.085, g.l);
+                    bl.x += g.x * step; bl.y += g.y * step; bl.facing = dl.x < bl.x ? -1 : 1;
+                }
+                const hr = D.help, hd = hr.dl, perp = { x: -hr.toQ.y, y: hr.toQ.x };
+                const side = (perp.x * (center.x - hd.x) + perp.y * (center.y - hd.y)) >= 0 ? 1 : -1;   // lines up beside the guard/tackle for a double team
+                const gc = unit(hd.x + hr.toQ.x * 1.0 + perp.x * side * 0.8 - center.x, hd.y + hr.toQ.y * 1.0 + perp.y * side * 0.8 - center.y), stepC = Math.min(hr.beaten ? 0.03 : 0.07, gc.l);
+                center.x += gc.x * stepC; center.y += gc.y * stepC; center.facing = hd.x < center.x ? -1 : 1;
+            }
+            // 3) nobody can overlap: a beaten blocker gets shoved aside, otherwise the DL is held up
+            for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
+                const A = bodies[i], B = bodies[j], sx = B.o.x - A.o.x, sy = B.o.y - A.o.y, sd = Math.hypot(sx, sy) || 0.001, MIN = A.team === B.team ? 1.0 : 0.95;
+                if (sd >= MIN) continue;
+                let shareA = 0.5;
+                if (A.team !== B.team) {
+                    const dB = A.team === 1 ? A : B, oB = A.team === 1 ? B : A, r = dB.r;
+                    if (r.blk === oB.o || (oB.o === center && D.help === r)) { const shareDL = r.beaten ? 0.25 : 0.7; shareA = A.team === 1 ? shareDL : 1 - shareDL; }
+                }
+                const push = MIN - sd, nx = sx / sd, ny = sy / sd;
+                A.o.x -= nx * push * shareA; A.o.y -= ny * push * shareA; B.o.x += nx * push * (1 - shareA); B.o.y += ny * push * (1 - shareA);
+            }
+            for (const o of offensiveLine) { o.vx = o.x - o.px; o.vy = o.y - o.py; o.anim += Math.hypot(o.vx, o.vy) * 3; }
+            // sack: any DL reaches the QB while he still holds the ball
+            if (live && ps === 'qb') for (const r of rushers) if (Math.hypot(player.x - r.dl.x, player.y - r.dl.y) < 1.05) {
+                D.sacked = true; for (const q of rushers) q.engagedNow = false; player.sacked = 80; aim.active = false; aim.id = null;
+                ball.state = 'loose'; ball.x = player.x; ball.y = player.y; ball.z = 0.5; ball.vz = 0.18; ball.vx = -0.05; ball.vy = 0.03; ball.rest = 0;   // fumble the ball loose
+                break;
+            }
+        }
 
 
         // ===== Ball: snap, catch, aim =====
@@ -154,11 +247,11 @@
         // throw: flies along the same arc the dotted preview shows; farther pull = harder throw (faster, higher)
         function launchThrow(th) {
             ball.state = 'thrown'; ball.t = 0; ball.ox = player.x; ball.oy = player.y; ball.x = ball.ox; ball.y = ball.oy; ball.z = 2.0;
-            ball.dx = th.dx; ball.dy = th.dy; ball.range = th.range; ball.peak = 2.2 + th.range * 0.2;
-            ball.T = Math.round(34 + th.range * 1.5);   // hang time: ~0.6s short, ~1.8s bomb
+            ball.dx = th.dx; ball.dy = th.dy; ball.range = th.range; ball.peak = th.peak;
+            ball.T = th.T;   // hang time depends on pass type (bullet = fast and flat, lob = slow and high)
         }
         function startSnap() {
-            ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
+            defenseStart(); ball.state = 'snap'; ball.t = 0; ball.sx = olineman.x; ball.sy = olineman.y; ball.x = ball.sx; ball.y = ball.sy; ball.z = 0.8;
         }
         function updateBall() {
             // ease the finger position (kills jitter from touch sampling) and the QB's wind-up
@@ -192,24 +285,38 @@
 
         // Drag-back aiming (touch or mouse on the field): pull back = throw the opposite way, farther pull = farther throw
         const aim = { active: false, id: null, sx: 0, sy: 0, cx: 0, cy: 0, fx: 0, fy: 0, mix: 0 };   // fx/fy = smoothed finger position, mix = 0..1 wind-up
+        let passType = 'bullet';   // 'bullet' = fast, flat | 'lob' = slow, high arc (toggled by tapping the top-left of the screen while aiming)
+        const inPassToggleZone = (x, y) => x < window.innerWidth * 0.35 && y < window.innerHeight * 0.35;
+        function togglePassType() { passType = passType === 'bullet' ? 'lob' : 'bullet'; }
         const MIN_PULL = 14, MAX_PULL = 120, MIN_THROW_YARDS = 6, MAX_THROW_YARDS = 50;
         function aimBegin(id, x, y) { if (aim.active) return; aim.active = true; aim.id = id; aim.sx = aim.cx = aim.fx = x; aim.sy = aim.cy = aim.fy = y; }
         function aimMove(x, y) { aim.cx = x; aim.cy = y; }
         function aimEnd() { const th = computeThrow(); if (th) launchThrow(th); aim.active = false; aim.id = null; }
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; aimBegin(t.identifier, t.clientX, t.clientY); }, { passive: false });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (const t of e.changedTouches) {
+                if (aim.active && t.identifier !== aim.id && inPassToggleZone(t.clientX, t.clientY)) { togglePassType(); continue; }   // 2nd finger, top-left: switch pass type
+                aimBegin(t.identifier, t.clientX, t.clientY);
+            }
+        }, { passive: false });
         canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!aim.active) return; for (const t of e.changedTouches) if (t.identifier === aim.id) aimMove(t.clientX, t.clientY); }, { passive: false });
         const aimTouchEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === aim.id) aimEnd(); };
         canvas.addEventListener('touchend', aimTouchEnd); canvas.addEventListener('touchcancel', aimTouchEnd);
         canvas.addEventListener('mousedown', (e) => aimBegin('mouse', e.clientX, e.clientY));
         window.addEventListener('mousemove', (e) => { if (aim.active && aim.id === 'mouse') aimMove(e.clientX, e.clientY); });
         window.addEventListener('mouseup', () => { if (aim.id === 'mouse') aimEnd(); });
+        window.addEventListener('keydown', (e) => { if (e.code === 'KeyQ' && aim.active) togglePassType(); });
         function computeThrow() {
             if (!aim.active || ball.state !== 'qb') return null;
             const dx = aim.sx - aim.fx, dy = aim.sy - aim.fy, len = Math.hypot(dx, dy);
             if (len < MIN_PULL) return null;
             const power = Math.min(1, (len - MIN_PULL) / (MAX_PULL - MIN_PULL));
             const d = screenInputToWorldDir(dx, dy);
-            return { dx: d.x, dy: d.y, range: MIN_THROW_YARDS + power * (MAX_THROW_YARDS - MIN_THROW_YARDS), power };
+            const range = MIN_THROW_YARDS + power * (MAX_THROW_YARDS - MIN_THROW_YARDS);
+            const lob = passType === 'lob';
+            const peak = lob ? 4.5 + range * 0.30 : 0.6 + range * 0.03;   // arc height
+            const T = Math.round(lob ? 48 + range * 2.0 : 18 + range * 0.7);   // frames in the air
+            return { dx: d.x, dy: d.y, range, power, peak, T, type: passType };
         }
 
         // ===== Field (pixel art field, unchanged) =====
@@ -644,7 +751,9 @@ const PXS = (function () {
                 const dd = screenInputToWorldDir(dx, dy); player.diveDirX = dd.x; player.diveDirY = dd.y;
             }
             spaceWasDown = spaceDown;
-            if (player.isDiving) {
+            if (player.sacked > 0) {   // pinned on the turf after a sack (uses the grounded dive pose)
+                player.sacked--; player.vx = 0; player.vy = 0; player.isDiving = true; player.diveTimer = player.sacked > 0 ? 30 : 59;
+            } else if (player.isDiving) {
                 player.vx = 0; player.vy = 0;
                 player.diveTimer++;
                 if (player.diveTimer < 20) { const s = 0.25 * (1 - player.diveTimer / 20) * worldDirSpeedMul(player.diveDirX, player.diveDirY); player.x += player.diveDirX * s; player.y += player.diveDirY * s; if (player.diveDirX !== 0) player.facing = player.diveDirX > 0 ? 1 : -1; }
@@ -672,6 +781,7 @@ const PXS = (function () {
             player.x = Math.max(0, Math.min(FIELD_LENGTH_YARDS, player.x));
             player.y = Math.max(-FIELD_WIDTH_YARDS / 2, Math.min(FIELD_WIDTH_YARDS / 2, player.y));
             updateBall();
+            updateDefense();
             const th = computeThrow(); if (th && Math.abs(th.dx) > 0.05) player.facing = th.dx > 0 ? 1 : -1;
             // camera follow (same smoothing as the original)
             camera.pitch = FIELD_VIEW_PITCH; camera.skew = 0;
@@ -699,14 +809,17 @@ const PXS = (function () {
             let shadowSize = PPY * 0.55;
             if (p.isDiving && p.diveTimer < 20) shadowSize -= Math.sin((p.diveTimer / 20) * Math.PI) * (PPY * 0.45);
             shadowSize *= playerSizeScale;
-            drawPixelShadow(receiver.x, receiver.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
+            for (const r of receivers) drawPixelShadow(r.x, r.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
+            drawPixelShadow(runningBack.x, runningBack.y, (PPY * 0.55 * playerSizeScale) / X_STRETCH, PPY * 0.55 * playerSizeScale, PPY, 'rgba(0,0,0,0.20)');
             for (const ol of offensiveLine) drawPixelShadow(ol.x, ol.y, PPY * 0.80, PPY * 0.45, PPY, 'rgba(0,0,0,0.20)');   // long, low oval like the crouched body (not a round blob)
+            for (const r of rushers) drawPixelShadow(r.dl.x, r.dl.y, PPY * 0.80, PPY * 0.45, PPY, 'rgba(0,0,0,0.20)');
             if (shadowSize > 0) drawPixelShadow(p.x, p.y, shadowSize / X_STRETCH, shadowSize, PPY, 'rgba(0,0,0,0.20)');
             ctx.restore();
 
 
             // offensive lineman: pixel sprite in the same style/palette as the player, four-point stance (art faces right, flipped to face left)
             for (const o of offensiveLine.slice().sort((a, b) => a.y - b.y)) {   // back-to-front so nearer linemen overlap farther ones
+                if (D.live) continue;   // once the ball is hiked the whole line is drawn with the DL in drawDefense()
                 const os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
                 const ospx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
                 const spr = (o === olineman && ball.state === 'center') ? linemanSprite : linemanSpriteNoBall;
@@ -716,9 +829,11 @@ const PXS = (function () {
                 ctx.restore();
             }
 
+            drawDefense(true);   // linemen further up the screen than the QB are drawn behind him
+
             // wide receiver (staggered two-point receiver stance)
-            {
-                const o = receiver, os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
+            for (const o of receivers) {
+                const os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
                 const wc = PXS.cached({
                     facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4,
                     skin: o.skinTone, jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff',
@@ -791,9 +906,28 @@ const PXS = (function () {
             ctx.drawImage(spriteCanvas, Math.round(-PXS.HX * spx), spriteTop, Math.round(PXS.W * spx), Math.round(PXS.H * spx));
             ctx.restore();
 
+            drawDefense(false);   // ...and the ones nearer the camera in front of him
+
+            // running back beside the QB (drawn after the QB because he stands nearer the camera)
+            {
+                const o = runningBack, os = toScreen(o.x, o.y), oScale = camera.zoom * 0.04;
+                const rc = PXS.cached({
+                    facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4,
+                    skin: o.skinTone, jersey: '#1e3a8a', pants: '#172554', helmet: '#1e3a8a', jerseyDetail: '#3b82f6', helmetStripe: '#ffffff', pantsStripe: '#ffffff',
+                    pitch: 0.45, lean: 0, plant: true, bob: 0, breath: 0,
+                    armA1: -0.55, armA2: -0.7, armB1: 0.1, armB2: 0.1, legA1: -0.4, legA2: -0.9, legK1: 0.25, legK2: 0.55
+                });
+                const rspx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
+                ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1);
+                ctx.imageSmoothingEnabled = rspx < 1.6;
+                ctx.drawImage(rc, Math.round(-PXS.HX * rspx), Math.round(3 * oScale - PXS.GROUND * rspx), Math.round(PXS.W * rspx), Math.round(PXS.H * rspx));
+                ctx.restore();
+            }
+
             drawSnapBall(spx);
             drawAimLine(spx);
         }
+
 
         // spiralling football sprites: long axis along the flight direction (16 angles), laces roll around the ball (12 phases)
         const flightCache = new Map();
@@ -821,6 +955,39 @@ const PXS = (function () {
             flightCache.set(key, c); return c;
         }
         // snap, throw and loose ball: pixel ball + a blocky shadow on the turf
+        // the DL and the guard blocking him: stance sprites before the snap, running / blocking poses after it
+        function drawDefense(behind) {
+            const oScale = camera.zoom * 0.04, spx = Math.max(0.45, oScale * 2.9 * 1.22) * playerSizeScale;
+            const list = (D.live ? offensiveLine.map(o => ({ o })) : []).concat(rushers.map(r => ({ o: r.dl, r })))
+                .filter(e => (e.o.y <= player.y) === behind).sort((a, b) => a.o.y - b.o.y);
+            for (const e of list) {
+                const o = e.o, r = e.r, os = toScreen(o.x, o.y);
+                ctx.save(); ctx.translate(Math.round(os.x), Math.round(os.y)); ctx.scale(o.facing, 1); ctx.imageSmoothingEnabled = false;
+                if (!D.live) {
+                    ctx.drawImage(dlineSprite, Math.round(-18 * spx * 0.5), Math.round(3 * oScale - dlineSprite.height * spx), Math.round(dlineSprite.width * spx), Math.round(dlineSprite.height * spx));
+                } else {
+                    let pose;
+                    if (r) {
+                        const mv = Math.min(1, Math.hypot(r.vx, r.vy) / 0.06), sw = Math.sin(r.anim);
+                        pose = r.engagedNow ? { pitch: 0.35, armA1: -1.5, armA2: -1.4, armB1: 0.3, armB2: 0.3, legA1: 0.5, legA2: -0.4, legK1: 0.6, legK2: 0.5 }
+                                            : { pitch: 0.2, armA1: -0.5 + sw * 0.8, armA2: -0.5 - sw * 0.8, armB1: 0.9, armB2: 0.9, legA1: -sw * 0.8 * mv, legA2: sw * 0.8 * mv, legK1: 0.2 + 0.4 * Math.max(0, sw) * mv, legK2: 0.2 + 0.4 * Math.max(0, -sw) * mv };
+                    } else {
+                        const mv = Math.min(1, Math.hypot(o.vx, o.vy) / 0.08), sw = Math.sin(o.anim);
+                        pose = { pitch: 0.3, armA1: -1.4, armA2: -1.5, armB1: 0.5, armB2: 0.5, legA1: 0.4 + sw * 0.25 * mv, legA2: -0.35 - sw * 0.25 * mv, legK1: 0.4, legK2: 0.4 };
+                    }
+                    const isDL = !!r;
+                    const spr = PXS.cached(Object.assign({
+                        facing: o.facing, girth: o.girth, isRef: false, hasFlag: false, hasBall: false, ballScale: 1.4, skin: o.skinTone, lean: 0, plant: true, bob: 0, breath: 0,
+                        jersey: isDL ? '#b91c1c' : '#1e3a8a', pants: isDL ? '#e5e7eb' : '#172554', helmet: isDL ? '#991b1b' : '#1e3a8a', jerseyDetail: isDL ? '#fca5a5' : '#3b82f6',
+                        helmetStripe: '#ffffff', pantsStripe: isDL ? '#991b1b' : '#ffffff'
+                    }, pose));
+                    ctx.imageSmoothingEnabled = spx < 1.6;
+                    ctx.drawImage(spr, Math.round(-PXS.HX * spx), Math.round(3 * oScale - PXS.GROUND * spx), Math.round(PXS.W * spx), Math.round(PXS.H * spx));
+                }
+                ctx.restore();
+            }
+        }
+
         function drawSnapBall(spx) {
             if (ball.state !== 'snap' && ball.state !== 'thrown' && ball.state !== 'loose') return;
             const s = Math.max(2, Math.round(spx * 0.85)), m = Math.max(1, Math.round(spx)), lift = camera.zoom * 0.9;   // m = whole-number ball pixel size, so every ball pixel is identical
@@ -853,8 +1020,8 @@ const PXS = (function () {
         // trajectory preview: pixel dots spaced evenly by distance along the arc (so they don't crawl or jump when you drag), landing mark at the end
         function drawAimLine(spx) {
             const th = computeThrow(); if (!th) return;
-            const g0 = Math.max(3, Math.round(spx * 1.0)), g = Math.max(2, Math.round(g0 * 0.6)), lift = camera.zoom * 0.9;   // g = thin dot size, g0 = old size (keeps the spacing)
-            const peak = 2.2 + th.range * 0.2, z0 = 2.0, N = 120;
+            const m = Math.max(1, Math.round(spx)), lift = camera.zoom * 0.9;   // m = one art pixel (same as the football and players)
+            const peak = th.peak, z0 = 2.0, N = 120;
             const sc0 = toScreen(player.x, player.y), xoff = -2.5 * spx * player.facing * aim.mix;   // arc starts at the cocked ball
             const pts = []; let total = 0;
             for (let i = 0; i <= N; i++) {
@@ -866,21 +1033,21 @@ const PXS = (function () {
             }
             ctx.imageSmoothingEnabled = false;
             const OUTLINE = '#0b2a16', FILL = '#ffffff', R = Math.round;
-            const gap = g0 * 4.2, fade = Math.min(1, aim.mix * 1.5);
+            const gap = m * 4, fade = Math.min(1, aim.mix * 1.5);
             ctx.globalAlpha = fade;
             let j = 0;
-            for (let sd = gap; sd < total - g0 * 3; sd += gap) {          // stop short of the landing mark
+            for (let sd = gap; sd < total - m * 3; sd += gap) {          // stop short of the landing mark
                 while (j < N - 1 && pts[j + 1].s < sd) j++;
                 const a0 = pts[j], a1 = pts[j + 1], u = (sd - a0.s) / ((a1.s - a0.s) || 1);
-                const x = R(a0.x + (a1.x - a0.x) * u), y = R(a0.y + (a1.y - a0.y) * u);
-                ctx.fillStyle = OUTLINE; ctx.fillRect(x - g - 1, y - g - 1, g * 2 + 2, g * 2 + 2);
-                ctx.fillStyle = FILL; ctx.fillRect(x - g, y - g, g * 2, g * 2);
+                const x = Math.round((a0.x + (a1.x - a0.x) * u) / m) * m, y = Math.round((a0.y + (a1.y - a0.y) * u) / m) * m;   // snapped to the pixel grid
+                ctx.fillStyle = OUTLINE; ctx.fillRect(x - m, y - m, m * 3, m * 3);   // one-pixel outline
+                ctx.fillStyle = FILL; ctx.fillRect(x, y, m, m);                        // one-pixel dot
             }
             // landing mark: pixel plus with an outline
-            const L = pts[N], lx = R(L.gx), ly = R(L.gy);
-            const gp = Math.max(2, Math.round(g0 * 0.6));   // landing mark: thinner arms too
-            const plus = (col, pad) => { ctx.fillStyle = col; for (const [a, b, w, h] of [[-3, -0.5, 6, 1], [-0.5, -3, 1, 6]]) ctx.fillRect(Math.round(lx + a * gp - pad), Math.round(ly + b * gp - pad), Math.round(w * gp + pad * 2), Math.round(h * gp + pad * 2)); };
-            plus(OUTLINE, 1); plus('#fde047', 0);
+            const L = pts[N], lx = Math.round(L.gx / m) * m, ly = Math.round(L.gy / m) * m;
+            const cells = []; for (let i = -2; i <= 2; i++) { cells.push([i, 0]); if (i) cells.push([0, i]); }   // 5x5 pixel plus
+            ctx.fillStyle = OUTLINE; for (const [cx, cy] of cells) ctx.fillRect(lx + cx * m - m, ly + cy * m - m, m * 3, m * 3);
+            ctx.fillStyle = '#fde047'; for (const [cx, cy] of cells) ctx.fillRect(lx + cx * m, ly + cy * m, m, m);
             ctx.globalAlpha = 1;
         }
 
