@@ -4501,28 +4501,9 @@ const PXS = (function () {
             if (m <= tol) return [a, b];
             const l = _rdpSimplify(pts.slice(0, mi + 1), tol), r = _rdpSimplify(pts.slice(mi), tol); return l.slice(0, -1).concat(r);
         }
-        // ===== ROUTE COLOR PICKER (shows on the right side before the hike) =====
-        const ROUTE_COLORS = ['#22d3ee', '#f8fafc', '#facc15', '#ff003c', '#a3e635', '#fb923c', '#f472b6', '#a78bfa'];
-        let routeLineColor = ROUTE_COLORS[0];
-        try { const sv = localStorage.getItem('routeLineColor'); if (sv && ROUTE_COLORS.includes(sv)) routeLineColor = sv; } catch (e) {}
+        // route art color (red)
+        const routeLineColor = '#ff003c';
         function _mixWhite(hex, t) { const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, m = c => Math.round(c + (255 - c) * t); return 'rgb(' + m(r) + ',' + m(g) + ',' + m(b) + ')'; }
-        (function buildRoutePicker() {
-            const box = document.createElement('div'); box.id = 'route-picker';
-            box.style.cssText = 'position:fixed;right:8px;top:50%;transform:translateY(-50%);z-index:60;display:none;flex-direction:column;gap:6px;padding:8px 6px;background:#14213d;border:3px solid #000;box-shadow:3px 3px 0 rgba(0,0,0,.5);image-rendering:pixelated;touch-action:manipulation;';
-            const lab = document.createElement('div'); lab.textContent = 'ROUTES'; lab.style.cssText = 'font:bold 9px monospace;color:#e0fbff;text-align:center;letter-spacing:1px;margin-bottom:2px;'; box.appendChild(lab);
-            const btns = [];
-            const mark = () => btns.forEach(b => { const on = b.dataset.c === routeLineColor; b.style.outline = on ? '3px solid #fff' : '3px solid transparent'; b.style.transform = on ? 'scale(1.1)' : 'none'; });
-            ROUTE_COLORS.forEach(c => {
-                const b = document.createElement('button'); b.dataset.c = c; b.setAttribute('aria-label', 'Route color ' + c);
-                b.style.cssText = 'width:28px;height:28px;padding:0;margin:0;border:3px solid #000;background:' + c + ';cursor:pointer;border-radius:0;';
-                const pick = e => { e.stopPropagation(); e.preventDefault(); routeLineColor = c; try { localStorage.setItem('routeLineColor', c); } catch (er) {} mark(); };
-                b.addEventListener('click', pick); b.addEventListener('mousedown', e => e.stopPropagation()); b.addEventListener('touchstart', e => { e.stopPropagation(); }, { passive: true }); b.addEventListener('touchend', pick);
-                btns.push(b); box.appendChild(b);
-            });
-            ['mousedown', 'touchstart', 'pointerdown'].forEach(ev => box.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
-            document.body.appendChild(box); mark();
-            setInterval(() => { let show = false; try { show = (gameState === 'PRE_SNAP') && !isPAT; } catch (e) {} box.style.display = show ? 'flex' : 'none'; }, 150);
-        })();
         function drawRouteLines(play) {
             const paths = computeRoutePaths(play); if (!paths.length) return;
             const Z = camera.zoom;
@@ -4555,7 +4536,7 @@ const PXS = (function () {
                 ctx.lineWidth = core; shaft(); ctx.stroke(); head(); ctx.fill();
                 ctx.fillRect(s0[0] - core / 2, s0[1] - core / 2, core, core);
                 // 3) pale shine stripe down the middle
-                ctx.strokeStyle = _mixWhite(routeLineColor, 0.7); ctx.lineWidth = Math.max(1, Math.round(core * 0.28)); shaft(); ctx.stroke();
+                ctx.strokeStyle = _mixWhite(routeLineColor, 0.55); ctx.lineWidth = Math.max(1, Math.round(core * 0.28)); shaft(); ctx.stroke();
             });
             ctx.restore();
         }
@@ -5436,88 +5417,105 @@ const PXS = (function () {
         // ===== PASS AIM RENDERER: trajectory, landing reticle, switch/throw effects, flight trail =====
         const _ease = { outCubic: t => 1 - Math.pow(1 - t, 3), outBack: t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); } };
         function drawPassAim() {
-            const now = performance.now(), Z = camera.zoom, lw = Math.max(1.4, Math.min(2.4, Z * 0.045));
+            const now = performance.now(), Z = camera.zoom;
             const aiming = isAimingPass && !!player, inFlight = gameState === 'BALL_IN_AIR' && isPassing;
             const sinceSwitch = now - passFx.switchAt, sinceThrow = now - passFx.throwAt;
             if (!aiming && !inFlight && sinceSwitch > 700 && sinceThrow > 400) { passFx.wasAiming = false; if (passFx.trail.length) passFx.trail.length = 0; return; }
-            const gx = Z * X_STRETCH, gy = Z * camera.pitch, zH = Z * 0.6;                 // screen px per yard (ground x / ground y) and per yard of height
+            const gx = Z * X_STRETCH, gy = Z * camera.pitch, zH = Z * 0.6;
             const T = PASS_TYPES[passType];
-            passFx.mix += ((passType === 'LOB' ? 1 : 0) - passFx.mix) * 0.22;           // arc height morphs smoothly between the two throws
+            passFx.mix += ((passType === 'LOB' ? 1 : 0) - passFx.mix) * 0.22;
             if (aiming && !passFx.wasAiming) passFx.aimAt = now; passFx.wasAiming = aiming;
-            ctx.save(); ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            // ---- pixel-art toolkit: everything is a chunky square snapped to one grid, with a navy outline ----
+            const px = Math.max(2, Math.round(Z * 0.085)), ol = Math.max(1, Math.round(px * 0.5)), INK = '#14213d';
+            const snapv = v => Math.round(v / px) * px;
+            const cell = (x, y) => [snapv(x), snapv(y)];
+            const uniq = list => { const seen = new Set(), out = []; list.forEach(c => { const k = c[0] + ',' + c[1]; if (!seen.has(k)) { seen.add(k); out.push(c); } }); return out; };
+            const paint = (cells, k, col, outline = true) => {            // outline pass first, then colour pass, so neighbouring blocks never overdraw each other
+                const sz = Math.max(1, Math.round(px * k)), h = sz / 2;
+                if (outline) { ctx.fillStyle = INK; cells.forEach(c => ctx.fillRect(Math.round(c[0] - h) - ol, Math.round(c[1] - h) - ol, sz + ol * 2, sz + ol * 2)); }
+                ctx.fillStyle = col; cells.forEach(c => ctx.fillRect(Math.round(c[0] - h), Math.round(c[1] - h), sz, sz));
+            };
+            const walk = (pts, step, off = 0) => {                         // points spaced evenly along a polyline
+                const out = []; let carry = -off;
+                for (let i = 1; i < pts.length; i++) {
+                    const x0 = pts[i - 1][0], y0 = pts[i - 1][1], x1 = pts[i][0], y1 = pts[i][1], sl = Math.hypot(x1 - x0, y1 - y0);
+                    while (carry <= sl) { if (carry >= 0) { const f = carry / (sl || 1); out.push([x0 + (x1 - x0) * f, y0 + (y1 - y0) * f]); } carry += step; }
+                    carry -= sl;
+                }
+                return out;
+            };
+            const ring = (cx, cy, rx, ry, n) => uniq(Array.from({ length: n }, (_, i) => { const a = i / n * 6.283; return cell(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry); }));
+            const plus = (cx, cy) => { const c = cell(cx, cy); return [c, [c[0] + px, c[1]], [c[0] - px, c[1]], [c[0], c[1] + px], [c[0], c[1] - px]]; };
+            ctx.save(); ctx.setLineDash([]); ctx.imageSmoothingEnabled = false;
 
             // ---------- while aiming: arc + reticle ----------
             if (aiming) {
                 const reveal = _ease.outCubic(Math.min(1, (now - passFx.aimAt) / 190));
-                const ht = passHangFor('BULLET', projectedDist) * (1 - passFx.mix) + passHangFor('LOB', projectedDist) * passFx.mix;   // visual flight time
+                const ht = passHangFor('BULLET', projectedDist) * (1 - passFx.mix) + passHangFor('LOB', projectedDist) * passFx.mix;
                 const z0 = 1.2, g = 0.008, vx = (projectedDestX - player.x) / ht, vy = (projectedDestY - player.y) / ht, vz = ((1.0 - z0) / ht) + (g * ht / 2) + (g / 2);
                 const N = 34, pts = [];
                 for (let i = 0; i <= N * reveal; i++) { const t = Math.max(1, ht * i / N); const sc = toScreen(player.x + vx * t, player.y + vy * t); pts.push([sc.x, sc.y - (z0 + vz * t - 0.5 * g * t * (t - 1)) * zH]); }
-                const line = () => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); };
-                const along = f => { const i = Math.max(0, Math.min(pts.length - 1, f * (pts.length - 1))), i0 = Math.floor(i), i1 = Math.min(pts.length - 1, i0 + 1), k = i - i0; return [pts[i0][0] + (pts[i1][0] - pts[i0][0]) * k, pts[i0][1] + (pts[i1][1] - pts[i0][1]) * k]; };
                 if (pts.length > 1) {
                     if (passType === 'BULLET') {
-                        ctx.strokeStyle = T.glow; ctx.lineWidth = lw + 2.5; line(); ctx.stroke();
-                        ctx.strokeStyle = T.core; ctx.lineWidth = lw; line(); ctx.stroke();
-                        // fast tracer racing down the line
-                        const ph = (now / 420) % 1;
-                        for (let k = 0; k < 6; k++) { const f = Math.max(0, ph - k * 0.022); if (f <= 0) continue; const q = along(f * (pts.length > 1 ? 1 : 0)); ctx.globalAlpha = 1 - k / 6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1.2, lw * (1.3 - k * 0.15)), 0, 6.283); ctx.fill(); }
-                        ctx.globalAlpha = 1;
+                        // solid stair-step pixel line
+                        paint(uniq(walk(pts, px * 0.7).map(q => cell(q[0], q[1]))), 1, T.color);
+                        // bright tracer racing down the line
+                        const ph = (now / 420) % 1, tr = [];
+                        for (let k = 0; k < 4; k++) { const f = Math.max(0, ph - k * 0.03); const w = walk(pts, 1); if (!w.length) break; const q = w[Math.min(w.length - 1, Math.floor(f * (w.length - 1)))]; tr.push([cell(q[0], q[1]), k]); }
+                        tr.forEach(([c, k]) => { ctx.globalAlpha = 1 - k * 0.22; paint([c], k === 0 ? 2 : 1, '#fff', k === 0); }); ctx.globalAlpha = 1;
                     } else {
-                        // soft marching dots along a high arc, plus a ground line to read the distance
+                        // faint pixel ground line to read distance
                         const gs = toScreen(player.x, player.y), ge = toScreen(projectedDestX, projectedDestY);
-                        ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(gs.x, gs.y); ctx.lineTo(ge.x, ge.y); ctx.stroke(); ctx.setLineDash([]);
-                        const step = Math.max(9, Z * 0.34), off = (now / 38) % step;
-                        let run = -off; ctx.fillStyle = T.core;
-                        for (let i = 1; i < pts.length; i++) {
-                            const x0 = pts[i - 1][0], y0 = pts[i - 1][1], x1 = pts[i][0], y1 = pts[i][1], sl = Math.hypot(x1 - x0, y1 - y0);
-                            while (run + step <= sl) { run += step; const f = run / (sl || 1); const dx = x0 + (x1 - x0) * f, dy = y0 + (y1 - y0) * f; ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.3, lw * 0.85), 0, 6.283); ctx.fill(); }
-                            run -= sl;
-                        }
-                        // floating sparkles drifting up the arc
-                        for (let k = 0; k < 3; k++) { const f = ((now / 1500) + k / 3) % 1, q = along(f), pulse = 0.5 + 0.5 * Math.sin(now / 160 + k * 2); ctx.globalAlpha = 0.35 + 0.5 * pulse; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1] - 2 - pulse * 2, 1.6 + pulse * 1.4, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
+                        ctx.globalAlpha = 0.35; paint(uniq(walk([[gs.x, gs.y], [ge.x, ge.y]], px * 4).map(q => cell(q[0], q[1]))), 1, '#e0f2fe', false); ctx.globalAlpha = 1;
+                        // marching chunky dots along the high arc
+                        const stepD = px * 3.4, off = (now / 38) % stepD;
+                        paint(uniq(walk(pts, stepD, off).map(q => cell(q[0], q[1]))), 2, T.color);
+                        // twinkling pixel stars drifting up the arc
+                        const w = walk(pts, 1);
+                        for (let k = 0; k < 3 && w.length; k++) { const f = ((now / 1500) + k / 3) % 1, q = w[Math.min(w.length - 1, Math.floor(f * (w.length - 1)))], pulse = Math.sin(now / 160 + k * 2) > 0;
+                            if (pulse) { ctx.globalAlpha = 0.95; paint(plus(q[0], q[1] - px * 2).slice(1), 1, '#fff', false); paint([cell(q[0], q[1] - px * 2)], 1, T.core, false); ctx.globalAlpha = 1; } }
                     }
                 }
                 // landing reticle (flat on the grass)
                 const ds = toScreen(projectedDestX, projectedDestY);
                 const snap = sinceSwitch < 300 ? 1 + 0.7 * (1 - _ease.outBack(Math.min(1, sinceSwitch / 300))) : 1;
                 if (passType === 'BULLET') {
-                    const R = 1.0 * snap * (1 + 0.06 * Math.sin(now / 80)), rx = R * gx, ry = R * gy, tk = 0.42;
-                    ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.beginPath();
-                    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { ctx.moveTo(ds.x + sx * rx, ds.y + sy * ry * (1 - tk)); ctx.lineTo(ds.x + sx * rx, ds.y + sy * ry); ctx.lineTo(ds.x + sx * rx * (1 - tk), ds.y + sy * ry); });
-                    ctx.stroke(); ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.5, lw), 0, 6.283); ctx.fill();
+                    const R = 1.0 * snap * (1 + (Math.sin(now / 80) > 0 ? 0.06 : 0)), rx = R * gx, ry = R * gy, arm = 3, cs = [];
+                    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { const cx = ds.x + sx * rx, cy = ds.y + sy * ry; for (let i = 0; i < arm; i++) { cs.push(cell(cx - sx * i * px, cy)); cs.push(cell(cx, cy - sy * i * px)); } });
+                    paint(uniq(cs), 1, T.color); paint(plus(ds.x, ds.y), 1, T.core);
                 } else {
-                    const R = 1.9 * snap, rx = R * gx, ry = R * gy;
-                    ctx.strokeStyle = T.color; ctx.lineWidth = lw; ctx.globalAlpha = 0.9; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -now / 70;
-                    ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke(); ctx.setLineDash([]);
-                    const ph = (now / 950) % 1, ir = 1 - 0.7 * ph;                 // inner ring shrinks like the ball dropping in
-                    ctx.globalAlpha = 0.85 * (1 - ph); ctx.strokeStyle = T.core; ctx.lineWidth = Math.max(1, lw * 0.8); ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx * ir, ry * ir, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1;
-                    ctx.fillStyle = T.core; ctx.beginPath(); ctx.arc(ds.x, ds.y, Math.max(1.3, lw * 0.8), 0, 6.283); ctx.fill();
+                    const R = 1.9 * snap, rx = R * gx, ry = R * gy, gap = Math.floor(now / 80), n = Math.max(20, Math.round((rx + ry) / px * 1.4));
+                    const rc = ring(ds.x, ds.y, rx, ry, n).filter((_, i) => (i + gap) % 4 !== 0);               // rotating dashed ring
+                    paint(rc, 1, T.color);
+                    const ph = (now / 950) % 1, ir = 1 - 0.7 * ph;                                              // inner ring shrinks like the ball dropping in
+                    ctx.globalAlpha = 1 - ph * 0.8; paint(ring(ds.x, ds.y, rx * ir, ry * ir, Math.max(12, Math.round(n * ir))), 1, T.core, false); ctx.globalAlpha = 1;
+                    paint([cell(ds.x, ds.y)], 1, T.core);
                 }
             }
 
             // ---------- switch burst + release pop at the QB's hands ----------
             const burst = (wx, wy, age, dur, type) => {
-                if (age < 0 || age > dur) return; const u = age / dur, C = PASS_TYPES[type], sc = toScreen(wx, wy), cx = sc.x, cy = sc.y - 1.2 * zH;
-                ctx.globalAlpha = 1 - u; ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.5, lw * (1.4 - u));
-                ctx.beginPath(); ctx.arc(cx, cy, 6 + _ease.outCubic(u) * (type === 'BULLET' ? 30 : 22), 0, 6.283); ctx.stroke();
-                if (type === 'BULLET') { ctx.strokeStyle = C.core; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.beginPath(); for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.39, r0 = 10 + _ease.outCubic(u) * 18, r1 = r0 + 9 * (1 - u); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); } ctx.stroke(); }
-                else { ctx.fillStyle = C.core; for (let k = 0; k < 7; k++) { const a = k * 6.283 / 7, r = 8 + _ease.outCubic(u) * 14; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r - u * 14, Math.max(1, 2.2 * (1 - u)), 0, 6.283); ctx.fill(); } }
+                if (age < 0 || age > dur) return; const u = age / dur, C = PASS_TYPES[type], sc = toScreen(wx, wy), cx = sc.x, cy = sc.y - 1.2 * zH, e = _ease.outCubic(u);
+                ctx.globalAlpha = 1 - u;
+                const r = 6 + e * (type === 'BULLET' ? 30 : 22);
+                paint(ring(cx, cy, r, r, Math.max(12, Math.round(r / px * 3.2))), 1, C.color);
+                if (type === 'BULLET') { const cs = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.39, r0 = 10 + e * 18; for (let j = 0; j < 2; j++) cs.push(cell(cx + Math.cos(a) * (r0 + j * px), cy + Math.sin(a) * (r0 + j * px))); } paint(uniq(cs), 1, C.core, false); }
+                else { const cs = []; for (let k = 0; k < 7; k++) { const a = k * 6.283 / 7, rr = 8 + e * 14; cs.push(cell(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr - u * 14)); } paint(uniq(cs), 1, C.core, false); }
                 ctx.globalAlpha = 1;
             };
             if (player && gameState === 'PLAYING') burst(player.x, player.y, sinceSwitch, 420, passType);
             if (passFx.throwPos) burst(passFx.throwPos.x, passFx.throwPos.y, sinceThrow, 260, passFx.thrown);
 
-            // ---------- in flight: landing ring that closes in + a trail that matches the throw ----------
+            // ---------- in flight: landing ring that closes in + a pixel trail that matches the throw ----------
             if (inFlight) {
                 const C = PASS_TYPES[passFx.thrown] || T, isB = passFx.thrown === 'BULLET';
                 const ds = toScreen(ball.destX, ball.destY), R = Math.max(0.3, Math.min(2.0, ball.z * 0.5)), rx = R * gx, ry = R * gy;
-                ctx.strokeStyle = C.color; ctx.lineWidth = Math.max(1.2, lw * 0.9); ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.ellipse(ds.x, ds.y, rx, ry, 0, 0, 6.283); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(ds.x - 3, ds.y); ctx.lineTo(ds.x + 3, ds.y); ctx.moveTo(ds.x, ds.y - 2); ctx.lineTo(ds.x, ds.y + 2); ctx.stroke(); ctx.globalAlpha = 1;
+                paint(ring(ds.x, ds.y, rx, ry, Math.max(12, Math.round((rx + ry) / px * 1.4))), 1, C.color);
+                paint(plus(ds.x, ds.y), 1, C.core, false);
                 passFx.trail.push({ x: ball.x, y: ball.y, z: ball.z }); const maxT = isB ? 16 : 26; while (passFx.trail.length > maxT) passFx.trail.shift();
                 const tr = passFx.trail.map(q => { const sc = toScreen(q.x, q.y); return [sc.x, sc.y - q.z * zH]; });
-                if (isB) { for (let i = 1; i < tr.length; i++) { const f = i / tr.length; ctx.globalAlpha = f * 0.8; ctx.strokeStyle = f > 0.7 ? '#fff' : C.color; ctx.lineWidth = Math.max(1, lw * 2.2 * f); ctx.beginPath(); ctx.moveTo(tr[i - 1][0], tr[i - 1][1]); ctx.lineTo(tr[i][0], tr[i][1]); ctx.stroke(); } }
-                else { for (let i = 0; i < tr.length; i += 2) { const f = i / tr.length; ctx.globalAlpha = f * 0.75; ctx.fillStyle = f > 0.6 ? '#fff' : C.color; ctx.beginPath(); ctx.arc(tr[i][0], tr[i][1], Math.max(1, lw * 1.2 * f), 0, 6.283); ctx.fill(); } }
+                for (let i = 0; i < tr.length; i += (isB ? 1 : 2)) { const f = i / tr.length; ctx.globalAlpha = Math.min(1, f * 1.1); paint([cell(tr[i][0], tr[i][1])], f > 0.75 ? 2 : 1, f > 0.6 ? '#fff' : C.color, f > 0.75); }
                 ctx.globalAlpha = 1;
             } else if (passFx.trail.length) passFx.trail.length = 0;
             ctx.restore();
