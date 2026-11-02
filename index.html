@@ -4501,6 +4501,28 @@ const PXS = (function () {
             if (m <= tol) return [a, b];
             const l = _rdpSimplify(pts.slice(0, mi + 1), tol), r = _rdpSimplify(pts.slice(mi), tol); return l.slice(0, -1).concat(r);
         }
+        // ===== ROUTE COLOR PICKER (shows on the right side before the hike) =====
+        const ROUTE_COLORS = ['#22d3ee', '#f8fafc', '#facc15', '#ff003c', '#a3e635', '#fb923c', '#f472b6', '#a78bfa'];
+        let routeLineColor = ROUTE_COLORS[0];
+        try { const sv = localStorage.getItem('routeLineColor'); if (sv && ROUTE_COLORS.includes(sv)) routeLineColor = sv; } catch (e) {}
+        function _mixWhite(hex, t) { const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, m = c => Math.round(c + (255 - c) * t); return 'rgb(' + m(r) + ',' + m(g) + ',' + m(b) + ')'; }
+        (function buildRoutePicker() {
+            const box = document.createElement('div'); box.id = 'route-picker';
+            box.style.cssText = 'position:fixed;right:8px;top:50%;transform:translateY(-50%);z-index:60;display:none;flex-direction:column;gap:6px;padding:8px 6px;background:#14213d;border:3px solid #000;box-shadow:3px 3px 0 rgba(0,0,0,.5);image-rendering:pixelated;touch-action:manipulation;';
+            const lab = document.createElement('div'); lab.textContent = 'ROUTES'; lab.style.cssText = 'font:bold 9px monospace;color:#e0fbff;text-align:center;letter-spacing:1px;margin-bottom:2px;'; box.appendChild(lab);
+            const btns = [];
+            const mark = () => btns.forEach(b => { const on = b.dataset.c === routeLineColor; b.style.outline = on ? '3px solid #fff' : '3px solid transparent'; b.style.transform = on ? 'scale(1.1)' : 'none'; });
+            ROUTE_COLORS.forEach(c => {
+                const b = document.createElement('button'); b.dataset.c = c; b.setAttribute('aria-label', 'Route color ' + c);
+                b.style.cssText = 'width:28px;height:28px;padding:0;margin:0;border:3px solid #000;background:' + c + ';cursor:pointer;border-radius:0;';
+                const pick = e => { e.stopPropagation(); e.preventDefault(); routeLineColor = c; try { localStorage.setItem('routeLineColor', c); } catch (er) {} mark(); };
+                b.addEventListener('click', pick); b.addEventListener('mousedown', e => e.stopPropagation()); b.addEventListener('touchstart', e => { e.stopPropagation(); }, { passive: true }); b.addEventListener('touchend', pick);
+                btns.push(b); box.appendChild(b);
+            });
+            ['mousedown', 'touchstart', 'pointerdown'].forEach(ev => box.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
+            document.body.appendChild(box); mark();
+            setInterval(() => { let show = false; try { show = (gameState === 'PRE_SNAP') && !isPAT; } catch (e) {} box.style.display = show ? 'flex' : 'none'; }, 150);
+        })();
         function drawRouteLines(play) {
             const paths = computeRoutePaths(play); if (!paths.length) return;
             const Z = camera.zoom;
@@ -4523,17 +4545,17 @@ const PXS = (function () {
                 const head = () => { ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(R(bx + px * headW), R(by + py * headW)); ctx.lineTo(R(bx - px * headW), R(by - py * headW)); ctx.closePath(); };
                 // start dot so the route visibly begins at the receiver
                 const s0 = pts[0];
-                // 1) hard black outline (shaft + head + start cap)
-                ctx.strokeStyle = '#000'; ctx.fillStyle = '#000';
+                // 1) dark navy outline (the game's ink color) (shaft + head + start cap)
+                ctx.strokeStyle = '#14213d'; ctx.fillStyle = '#14213d';
                 ctx.lineWidth = core + edge * 2; shaft(); ctx.stroke();
                 ctx.lineWidth = edge * 2; head(); ctx.stroke(); head(); ctx.fill();
                 ctx.fillRect(s0[0] - (core / 2 + edge), s0[1] - (core / 2 + edge), core + edge * 2, core + edge * 2);
-                // 2) chalk-white body
-                ctx.strokeStyle = '#f8fafc'; ctx.fillStyle = '#f8fafc';
+                // 2) cyan body (same as the offense players)
+                ctx.strokeStyle = routeLineColor; ctx.fillStyle = routeLineColor;
                 ctx.lineWidth = core; shaft(); ctx.stroke(); head(); ctx.fill();
                 ctx.fillRect(s0[0] - core / 2, s0[1] - core / 2, core, core);
-                // 3) one-pixel gold highlight down the middle (matches the first-down line)
-                ctx.strokeStyle = '#facc15'; ctx.lineWidth = Math.max(1, Math.round(core * 0.28)); shaft(); ctx.stroke();
+                // 3) pale shine stripe down the middle
+                ctx.strokeStyle = _mixWhite(routeLineColor, 0.7); ctx.lineWidth = Math.max(1, Math.round(core * 0.28)); shaft(); ctx.stroke();
             });
             ctx.restore();
         }
