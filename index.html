@@ -4475,12 +4475,12 @@ const PXS = (function () {
                     const kind = routeKind(p.slot, play); if (kind === 'block') return;
                     const side = p.routeSide || (p.y < 0 ? -1 : 1), f = p.facing || (-dir), sp = 0.25;
                     let x = p.x, y = p.y; const pts = [[x, y]];
-                    const cap = { go: 24, post: 24, seam: 24, slant: 17, out: 14, flat: 15, curl: 10 }[kind] || 20;
+                    const cap = { go: 15, post: 14, seam: 15, slant: 9, out: 9, flat: 10, curl: 7 }[kind] || 12;
                     for (let i = 0; i < 700; i++) {
                         const dist = Math.abs(x - L); const d = routeDelta(kind, x, y, f, sp, dist, side);
                         if (Math.abs(d[0]) + Math.abs(d[1]) < 0.012) break;
                         x += d[0]; y += d[1]; pts.push([x, clampY(y)]);
-                        if (Math.abs(x - L) >= cap || Math.abs(y) >= FIELD_WIDTH_YARDS / 2 - 2 || (kind === 'out' && Math.abs(y) >= 22)) break;
+                        if (Math.abs(x - L) >= cap || Math.abs(y) >= FIELD_WIDTH_YARDS / 2 - 2 || (kind === 'out' && Math.abs(y) >= 18)) break;
                     }
                     if (kind === 'curl') { const e = pts[pts.length - 1]; pts.push([e[0] - f * 2.6, e[1] - side * 1.4]); }  // the hook back toward the QB
                     if (pts.length > 2) out.push(pts);
@@ -4504,22 +4504,36 @@ const PXS = (function () {
         function drawRouteLines(play) {
             const paths = computeRoutePaths(play); if (!paths.length) return;
             const Z = camera.zoom;
-            const lw = Math.max(1.3, Math.min(2.2, Z * 0.042));            // line thickness in screen px
-            const headL = Math.max(5, Math.min(9, Z * 0.22)), headW = headL * 0.46;
+            // chunky pixel-art sizing: scales with the same zoom the sprites use
+            const core = Math.max(3, Math.round(Z * 0.11));        // white chalk body
+            const edge = Math.max(2, Math.round(core * 0.5));      // black outline on each side
+            const headL = Math.round(core * 3.2), headW = Math.round(core * 2.1);
+            const R = v => Math.round(v);
             ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); if (window._mpMirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
-            ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.imageSmoothingEnabled = false; ctx.setLineDash([]); ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'; ctx.miterLimit = 3;
             paths.forEach(path => {
-                const pts = _rdpSimplify(path, 0.6).map(q => { const sc = toScreen(q[0], q[1]); return [sc.x, sc.y]; });
+                const pts = _rdpSimplify(path, 0.35).map(q => { const sc = toScreen(q[0], q[1]); return [R(sc.x), R(sc.y)]; });
                 if (pts.length < 2) return;
                 let total = 0; for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-                if (total < 8) return;
+                if (total < headL + 4) return;
                 const e = pts[pts.length - 1]; let k = pts.length - 2; while (k > 0 && Math.hypot(e[0] - pts[k][0], e[1] - pts[k][1]) < 3) k--;
                 let dx = e[0] - pts[k][0], dy = e[1] - pts[k][1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-                const bx = e[0] - dx * headL, by = e[1] - dy * headL, px = -dy, py = dx;
+                const bx = R(e[0] - dx * headL), by = R(e[1] - dy * headL), px = -dy, py = dx;
                 const shaft = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.lineTo(bx, by); };
-                const head = () => { ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(bx + px * headW, by + py * headW); ctx.lineTo(bx - px * headW, by - py * headW); ctx.closePath(); };
-                ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = lw + 1.6; shaft(); ctx.stroke(); head(); ctx.stroke();
-                ctx.strokeStyle = 'rgba(243,247,239,0.95)'; ctx.fillStyle = 'rgba(243,247,239,0.95)'; ctx.lineWidth = lw; shaft(); ctx.stroke(); head(); ctx.fill();
+                const head = () => { ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(R(bx + px * headW), R(by + py * headW)); ctx.lineTo(R(bx - px * headW), R(by - py * headW)); ctx.closePath(); };
+                // start dot so the route visibly begins at the receiver
+                const s0 = pts[0];
+                // 1) hard black outline (shaft + head + start cap)
+                ctx.strokeStyle = '#000'; ctx.fillStyle = '#000';
+                ctx.lineWidth = core + edge * 2; shaft(); ctx.stroke();
+                ctx.lineWidth = edge * 2; head(); ctx.stroke(); head(); ctx.fill();
+                ctx.fillRect(s0[0] - (core / 2 + edge), s0[1] - (core / 2 + edge), core + edge * 2, core + edge * 2);
+                // 2) chalk-white body
+                ctx.strokeStyle = '#f8fafc'; ctx.fillStyle = '#f8fafc';
+                ctx.lineWidth = core; shaft(); ctx.stroke(); head(); ctx.fill();
+                ctx.fillRect(s0[0] - core / 2, s0[1] - core / 2, core, core);
+                // 3) one-pixel gold highlight down the middle (matches the first-down line)
+                ctx.strokeStyle = '#facc15'; ctx.lineWidth = Math.max(1, Math.round(core * 0.28)); shaft(); ctx.stroke();
             });
             ctx.restore();
         }
