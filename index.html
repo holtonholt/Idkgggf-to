@@ -388,6 +388,28 @@
         .hm-meter { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 7px; color: #cbd5e1; } .hm-meter div { flex: 1; height: 8px; background: #1e293b; } .hm-meter i { display: block; height: 100%; background: #facc15; } .hm-meter.done i { background: #4ade80; }
         .hm-ov { margin-top: 0; }
 
+
+        /* office field view */
+        .fd-tabs { display: flex; gap: 12px; justify-content: center; padding: 4px 0; }
+        .fd-tabs button { font-family: 'Press Start 2P', monospace; font-size: clamp(8px, 2.4vw, 10px); color: #94a3b8; background: #0b1220; border: 0; padding: 12px 14px 10px; cursor: pointer; margin: 3px; box-shadow: 0 -3px 0 0 #334155, 0 3px 0 0 #334155, -3px 0 0 0 #334155, 3px 0 0 0 #334155, 4px 6px 0 0 rgba(0,0,0,.55); }
+        .fd-tabs button.on { color: #0b1220; background: #4ade80; box-shadow: 0 -3px 0 0 #fff, 0 3px 0 0 #fff, -3px 0 0 0 #fff, 3px 0 0 0 #fff, 4px 6px 0 0 rgba(0,0,0,.55); }
+        .fd-field { position: relative; width: min(100%, 460px); aspect-ratio: 5 / 6; margin: 6px auto; box-sizing: border-box; overflow: hidden;
+            background-color: #15803d; background-image: repeating-linear-gradient(180deg, #16a34a 0, #16a34a 8.333%, #15803d 8.333%, #15803d 16.666%);
+            box-shadow: 0 0 0 4px #fff, 0 0 0 8px #0b1220, 8px 10px 0 8px rgba(0,0,0,.6); }
+        .fd-line { position: absolute; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.55); }
+        .fd-los { height: 4px; background: #facc15; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+        .fd-tag { position: absolute; left: 6px; font-size: 6px; color: rgba(255,255,255,.85); text-shadow: 2px 2px 0 #000; transform: translateY(-50%); }
+        .fd-p { --tc: #38bdf8; --tc2: #0c4a6e; position: absolute; transform: translate(-50%, -50%); width: 17%; padding: 0; border: 0; background: none; cursor: pointer; font-family: 'Press Start 2P', monospace; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 2px; -webkit-tap-highlight-color: transparent; }
+        .fd-p:active { transform: translate(-50%, -50%) scale(.92); }
+        .fd-p .fd-img { position: relative; width: 100%; aspect-ratio: 7 / 6; background: rgba(2,6,23,.55); box-shadow: 0 -2px 0 0 var(--tc), 0 2px 0 0 var(--tc), -2px 0 0 0 var(--tc), 2px 0 0 0 var(--tc), 3px 4px 0 0 rgba(0,0,0,.5); }
+        .fd-p img { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+        .fd-ovr { position: absolute; right: -4px; top: -6px; background: var(--tc); color: #0b1220; font-size: 7px; padding: 3px 3px 2px; box-shadow: 0 0 0 2px #0b1220; }
+        .fd-role { font-size: 6px; color: #fff; text-shadow: 2px 2px 0 #000; background: rgba(2,6,23,.6); padding: 2px 3px 1px; }
+        .fd-p.seen .fd-img::after { content: '\2714'; position: absolute; left: -4px; bottom: -4px; background: #16a34a; color: #fff; font-size: 7px; padding: 2px; }
+        .fd-hint { text-align: center; color: #64748b; font-size: 7px; line-height: 1.8; }
+        .fd-k { display: flex; justify-content: center; padding: 20px 0 8px; }
+        .fd-k .pc { width: 130px; }
+
         /* office playbook + welcome pack */
         .of-seg { display: flex; gap: 14px; justify-content: center; padding: 4px 0; }
         .of-seg button { font-family: 'Press Start 2P', monospace; font-size: clamp(8px, 2.4vw, 10px); color: #94a3b8; background: #0b1220; border: 0; padding: 12px 18px 10px; cursor: pointer; margin: 3px; box-shadow: 0 -3px 0 0 #334155, 0 3px 0 0 #334155, -3px 0 0 0 #334155, 3px 0 0 0 #334155, 4px 6px 0 0 rgba(0,0,0,.55); }
@@ -6239,12 +6261,42 @@ const PXS = (function () {
                 const t = teamOf(), tier = tierOf(p.ovr), tr = traitsOf(p)[0], oc = click == null ? `onclick="ofOpen('${p.id}')"` : (click ? `onclick="${click}"` : 'tabindex="-1"');
                 return `<button class="pc ${tier.cls} ${(tut.on && tut.phase === 'roster' && tut.viewed.has(p.id)) ? 'seen' : ''}" style="${tierVars(tier, t)}" ${oc}><span class="pc-head"><span class="pc-ovr">${p.ovr}</span><span class="pc-pos">${p.role}</span></span><span class="pc-stage"><span class="pc-num">#${p.num}</span><img alt="" src="${bust(p, t)}"></span><span class="pc-name">${p.name.toUpperCase()}</span><span class="pc-tag">${tr}</span></button>`;
             }
+
+            // ---- field formations: x / y are % of the field, LOS sits at 50% ----
+            let ofSide = 'off';
+            const FORM = {
+                off: { QB: [[50, 64]], RB: [[50, 78]], TE: [[86, 50]], WR: [[8, 52], [92, 56], [24, 56]],
+                       OL: { LT: [30, 50], LG: [40, 50], C: [50, 50], RG: [60, 50], RT: [70, 50] } },
+                def: { DE: [[28, 44], [72, 44]], DT: [[39, 44], [61, 44]], NT: [[50, 44]],
+                       CB: [[8, 40], [92, 40], [26, 40]], MLB: [[40, 32], [60, 32]], S: [[50, 16]] }
+            };
+            function fieldHTML(r, side) {
+                const t = teamOf(), used = {}, pts = [];
+                const list = r.filter(p => p.grp === side);
+                list.forEach(p => {
+                    let xy;
+                    if (side === 'off' && p.pos === 'OL') xy = FORM.off.OL[p.role];
+                    else { const key = (side === 'off') ? p.pos : p.role; const arr = FORM[side][key] || []; const n = (used[key] = (used[key] || 0)); used[key]++; xy = arr[n]; }
+                    if (xy) pts.push([p, xy]);
+                });
+                const tok = ([p, xy]) => { const tier = tierOf(p.ovr), seen = (tut.on && tut.phase === 'roster' && tut.viewed.has(p.id)) ? 'seen' : '';
+                    return `<button class="fd-p ${seen}" style="left:${xy[0]}%;top:${xy[1]}%;${tierVars(tier, t)}" onclick="ofOpen('${p.id}')"><span class="fd-img"><img alt="" src="${bust(p, t)}"><span class="fd-ovr">${p.ovr}</span></span><span class="fd-role">${p.role}</span></button>`; };
+                const lines = [10, 20, 30, 40, 60, 70, 80, 90].map(y => `<div class="fd-line" style="top:${y}%"></div>`).join('');
+                return `<div class="fd-field ${tut.phase === 'roster' ? 'of-hl' : ''}">${lines}<div class="fd-line fd-los" style="top:50%"></div><span class="fd-tag" style="top:50%;left:auto;right:6px">LINE OF SCRIMMAGE</span>${pts.map(tok).join('')}</div>`;
+            }
             function renderOffice() {
                 const content = document.getElementById('hub-content'); if (!content) return;
                 const r = ensureRoster(); if (!r) return; const tr = ratingsOf(r), t = teamOf(), bench = career.bench || [];
                 if (tut.on) ofView = 'lineup';
                 if (ofView === 'playbook' && !ofEdit) return renderPlaybook();
                 const sec = (title, grp) => { const l = r.filter(p => p.grp === grp); return `<div class="of-sec"><span>${title}</span><small>${l.length}</small></div><div class="of-grid ${tut.phase === 'roster' ? 'of-hl' : ''}">${l.map(p => cardHTML(p)).join('')}</div>`; };
+
+                const fieldSec = () => {
+                    if (tut.on && ofSide === 'st') ofSide = 'off';
+                    const tabs = `<div class="fd-tabs"><button class="${ofSide === 'off' ? 'on' : ''}" onclick="ofSetSide('off')">OFFENSE</button><button class="${ofSide === 'def' ? 'on' : ''}" onclick="ofSetSide('def')">DEFENSE</button><button class="${ofSide === 'st' ? 'on' : ''}" onclick="ofSetSide('st')">KICKER</button></div>`;
+                    if (ofSide === 'st') return tabs + `<div class="of-sec"><span>SPECIAL TEAMS</span><small>${r.filter(p => p.grp === 'st').length}</small></div><div class="fd-k">${r.filter(p => p.grp === 'st').map(p => cardHTML(p)).join('')}</div><div class="fd-hint">TAP YOUR KICKER TO SEE HIS STATS</div>`;
+                    return tabs + fieldHTML(r, ofSide) + `<div class="fd-hint">${ofSide === 'off' ? 'YOUR OFFENSE LINED UP BEFORE THE HIKE' : 'YOUR DEFENSE READY FOR THE SNAP'}<br>TAP A PLAYER TO SEE HIS CARD</div>`;
+                };
                 const plate = (v, l, big) => `<div class="of-plate ${big ? 'big' : ''}"><b style="color:${tierOf(v).c}">${v}</b><i>${l}</i></div>`;
                 const benchSec = !ofEdit ? '' : `<div class="of-sec" id="of-bench"><span>BENCH</span><small>${bench.length}</small></div>` + (bench.length
                     ? `<div class="of-grid ${tut.phase === 'lineup' ? 'of-hl' : ''}">${bench.map(p => cardHTML(p)).join('')}</div>`
@@ -6252,10 +6304,11 @@ const PXS = (function () {
                 content.style.justifyContent = 'flex-start';
                 content.innerHTML = `<div class="of-wrap"><div class="of-title">${ofEdit ? 'EDIT LINEUP' : 'OFFICE'}</div><div class="of-school">${ofEdit ? 'TAP A BENCH PLAYER, THEN PRESS START' : t.name.toUpperCase() + ' · STARTING ROSTER'}</div>
                     ${ofSeg()}<div class="of-rate">${plate(tr.ovr, 'TEAM OVR', true)}${plate(tr.off, 'OFFENSE')}${plate(tr.def, 'DEFENSE')}${plate(tr.st, 'KICKER')}</div>
-                    ${sec('OFFENSE', 'off')}${sec('DEFENSE', 'def')}${sec('SPECIAL TEAMS', 'st')}${benchSec}
+                    ${fieldSec()}${benchSec}
                     <div class="of-editbar">${ofEdit ? '<button class="retro-btn" id="of-auto" style="background-color:#f59e0b" onclick="ofAuto()">AUTO BEST LINEUP</button>' : ''}<button class="retro-btn" id="of-edit" style="${ofEdit ? 'background-color:#16a34a' : ''}" onclick="ofToggleEdit()">${ofEdit ? 'DONE' : 'EDIT'}</button></div></div>`;
                 content.style.paddingBottom = tut.phase === 'roster' ? '120px' : '';
             }
+            window.ofSetSide = function (v) { ofSide = v; const hc = document.getElementById('hub-content'), st = hc ? hc.scrollTop : 0; renderOffice(); if (hc) hc.scrollTop = st; };
             window.ofToggleEdit = function () {
                 ofEdit = !ofEdit; renderOffice();
                 if (tut.on && tut.phase === 'lineup') {
